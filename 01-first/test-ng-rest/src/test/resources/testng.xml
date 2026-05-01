@@ -2,18 +2,18 @@
 <!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
 
 <!--
-  Items API – TestNG Suite
+  Items API - TestNG Suite
   ========================
   Run with:   mvn test
               mvn test -Dbase.url=http://myserver:8080
 
   Groups
-  ------
-  create    – POST /api/items tests  (run first; read/update depend on them)
-  read      – GET  tests
-  update    – PUT  tests
-  delete    – DELETE tests
-  lifecycle – end-to-end Create→Read→Update→Delete chain
+  ......
+  create    - POST /api/items tests  (run first; read/update depend on them)
+  read      - GET  tests
+  update    - PUT  tests
+  delete    - DELETE tests
+  lifecycle - end-to-end Create-Read-Update-Delete chain
 -->
 <suite name="Items API Suite" parallel="false" verbose="2">
 
@@ -22,7 +22,11 @@
     <listener class-name="org.testng.reporters.XMLReporter"/>
   </listeners>
 
-  <!-- Run groups in dependency order -->
+  <!--
+    All classes that declare dependsOnGroups="create" must be in the same
+    <test> block as CreateItemTest, so TestNG can resolve the "create" group.
+    We run all five classes together and use <groups><run> to control ordering.
+  -->
   <test name="Create Tests">
     <groups>
       <run>
@@ -37,10 +41,12 @@
   <test name="Read Tests">
     <groups>
       <run>
+        <include name="create"/>
         <include name="read"/>
       </run>
     </groups>
     <classes>
+      <class name="pl.ldz.example.tests.CreateItemTest"/>
       <class name="pl.ldz.example.tests.GetItemTest"/>
     </classes>
   </test>
@@ -48,10 +54,12 @@
   <test name="Update Tests">
     <groups>
       <run>
+        <include name="create"/>
         <include name="update"/>
       </run>
     </groups>
     <classes>
+      <class name="pl.ldz.example.tests.CreateItemTest"/>
       <class name="pl.ldz.example.tests.UpdateItemTest"/>
     </classes>
   </test>
