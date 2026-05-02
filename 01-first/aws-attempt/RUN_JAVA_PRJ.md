@@ -17,7 +17,12 @@ mvn clean test
 mvn clean integration-test
 ```
 
-## All tests (Unit + Integration). Requires Docker (Testcontainers).
+## Local (default). All tests (Unit + Integration). Requires Docker (Testcontainers).
 ```bash
 mvn clean verify
 ```
+
+//TODO:
+# Real AWS — needs env vars set
+export RDS_HOSTNAME=... S3_BUCKET=... # etc.
+mvn verify -Paws-it

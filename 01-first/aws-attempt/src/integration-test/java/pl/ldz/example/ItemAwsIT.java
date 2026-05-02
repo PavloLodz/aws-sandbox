@@ -12,33 +12,39 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Integration tests that run against real AWS (RDS + S3).
+ *
+ * <p>Skipped automatically when {@code RDS_HOSTNAME} env var is not set.
+ * See {@link AbstractAwsIT} for required environment variables and how to run.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
-class ItemIT extends AbstractLocalIT {
+class ItemAwsIT extends AbstractAwsIT {
 
   @Autowired
   MockMvc mockMvc;
-
-  @Test
-  void createAndFetchItem() throws Exception {
-    mockMvc.perform(post("/api/items")
-        .contentType(MediaType.APPLICATION_JSON)
-        .content("""
-            {"name": "Test Item", "description": "A simple test item"}
-            """))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.id").isNumber())
-        .andExpect(jsonPath("$.name").value("Test Item"));
-
-    mockMvc.perform(get("/api/items"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].name").value("Test Item"));
-  }
 
   @Test
   void healthEndpointIsAvailable() throws Exception {
     mockMvc.perform(get("/actuator/health"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("UP"));
+  }
+
+  @Test
+  void createAndFetchItem() throws Exception {
+    mockMvc.perform(post("/api/items")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "AWS Test Item", "description": "Created against real AWS"}
+                """))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.id").isNumber())
+        .andExpect(jsonPath("$.name").value("AWS Test Item"));
+
+    mockMvc.perform(get("/api/items"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].name").exists());
   }
 }

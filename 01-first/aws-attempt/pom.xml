@@ -33,6 +33,13 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>2.25.0</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -75,6 +82,12 @@
     </dependency>
 
 
+    <!-- AWS SDK S3 -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+    </dependency>
+
     <!-- Swagger / OpenAPI -->
     <dependency>
       <groupId>org.springdoc</groupId>
@@ -110,6 +123,13 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- LocalStack for local S3 testing -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>localstack</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -231,5 +251,30 @@
     </plugins>
   </build>
 
+
+  <profiles>
+    <!--
+      aws-it profile: runs integration tests against real AWS services.
+      Activate with: mvn verify -Paws-it
+      Requires env vars: RDS_HOSTNAME, RDS_PORT, RDS_DB_NAME, RDS_USERNAME,
+                         RDS_PASSWORD, S3_BUCKET, S3_REGION
+    -->
+    <profile>
+      <id>aws-it</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>**/*AwsIT.java</include>
+              </includes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>
