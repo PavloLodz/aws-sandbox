@@ -1,0 +1,16 @@
+---
+# Installs Amazon Corretto 21 on Amazon Linux 2023.
+
+- name: Install Amazon Corretto 21 (JRE)
+  ansible.builtin.dnf:
+    name: "{{ java_package }}"
+    state: present
+
+- name: Verify Java version
+  ansible.builtin.command: java -version
+  register: java_version_output
+  changed_when: false
+
+- name: Show installed Java version
+  ansible.builtin.debug:
+    msg: "{{ java_version_output.stderr }}"

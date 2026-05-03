@@ -1,0 +1,19 @@
+# Dev environment — free-tier friendly
+# Run: terraform apply -var-file="environments/dev/terraform.tfvars"
+
+environment        = "dev"
+aws_region         = "eu-central-1"
+availability_zones = ["eu-central-1a", "eu-central-1b"]
+vpc_cidr           = "10.0.0.0/16"
+
+# EC2
+key_pair_name     = "aws-attempt-dev-key"   # must exist in AWS Console → EC2 → Key Pairs
+ec2_instance_type = "t2.micro"              # free tier eligible
+
+# RDS
+db_name     = "aws_attempt"
+db_username = "postgres"
+# db_password — set via env var: export TF_VAR_db_password="your-secret"
+
+# S3
+s3_bucket_name = "aws-attempt-dev-uploads-CHANGEME"   # must be globally unique
