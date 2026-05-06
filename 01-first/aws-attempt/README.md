@@ -33,32 +33,16 @@ docker run -d \
   postgres:16-alpine
 
 # Run the app with the local profile
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+mvn clear spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 ### Run tests
 
 ```bash
-./mvnw test
+mvn clear test
 ```
 
 ---
-
-## AWS deployment options
-
-### Option A – Elastic Beanstalk (simplest)
-
-1. Build the JAR:
-   ```bash
-   ./mvnw package -DskipTests
-   ```
-2. Create an Elastic Beanstalk environment (Java 21 platform).
-3. Attach an RDS PostgreSQL instance — Beanstalk injects
-   `RDS_HOSTNAME`, `RDS_PORT`, `RDS_DB_NAME`, `RDS_USERNAME`, `RDS_PASSWORD`
-   automatically as environment variables.
-4. Set the environment variable `SPRING_PROFILES_ACTIVE=aws`.
-5. Upload `target/aws-attempt-*.jar`.
-
 
 ## API endpoints
 
