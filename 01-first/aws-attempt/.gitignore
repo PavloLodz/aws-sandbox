@@ -6,3 +6,7 @@ target/
 application-local.properties
 .env
 .env.aws
+
+# Azure secrets
+.env.azure
+terraform/terraform.tfvars
