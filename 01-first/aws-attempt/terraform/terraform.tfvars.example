@@ -1,0 +1,11 @@
+# Copy this file to terraform.tfvars and fill in your real values.
+# terraform.tfvars is git-ignored — never commit it.
+
+neon_host     = "ep-xxx.eu-west-2.aws.neon.tech"
+neon_user     = "your-neon-username"
+neon_password = "your-neon-password"
+
+# Optional overrides (defaults are set in variables.tf):
+# location       = "West Europe"
+# resource_group = "aws-attempt-rg"
+# acr_name       = "awsattemptacr"

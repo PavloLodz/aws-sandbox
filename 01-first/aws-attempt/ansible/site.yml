@@ -1,0 +1,7 @@
+---
+- hosts: localhost
+  vars:
+    image_tag: "{{ lookup('pipe', 'git rev-parse --short HEAD') }}"
+    project_root: "{{ playbook_dir }}/.."
+  roles:
+    - deploy_app
