@@ -59,31 +59,6 @@ docker run -d \
 4. Set the environment variable `SPRING_PROFILES_ACTIVE=aws`.
 5. Upload `target/aws-attempt-*.jar`.
 
-### Option B – ECS (container)
-
-1. Build and push the image:
-   ```bash
-   docker build -t aws-attempt .
-   docker tag aws-attempt <account>.dkr.ecr.<region>.amazonaws.com/aws-attempt:latest
-   aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-   docker push <account>.dkr.ecr.<region>.amazonaws.com/aws-attempt:latest
-   ```
-2. Create an ECS Task Definition with environment variables:
-   ```
-   RDS_HOSTNAME  → your RDS endpoint
-   RDS_PORT      → 5432
-   RDS_DB_NAME   → aws_attempt
-   RDS_USERNAME  → (from Secrets Manager)
-   RDS_PASSWORD  → (from Secrets Manager)
-   ```
-3. Create an ECS Service behind an Application Load Balancer.
-4. ALB health check path: `/actuator/health`
-
-### Option C – AWS Lambda (serverless, SnapStart)
-
-Add the `spring-cloud-function-web` dependency and enable SnapStart on the Lambda function for fast cold starts.
-
----
 
 ## API endpoints
 
