@@ -1,8 +1,14 @@
 ---
-- name: Build and push image to ACR
-  command: az acr build --registry awsattemptacr --image aws-attempt:{{ image_tag }} .
+- name: Build Docker image
+  command: docker build -t awsattemptacr.azurecr.io/aws-attempt:{{ image_tag }} .
   args:
     chdir: "{{ project_root }}"
+
+- name: Login to ACR
+  command: az acr login --name awsattemptacr
+
+- name: Push image to ACR
+  command: docker push awsattemptacr.azurecr.io/aws-attempt:{{ image_tag }}
 
 - name: Update Container App to new image
   command: >
