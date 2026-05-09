@@ -200,6 +200,16 @@
           <excludes>
             <exclude>**/*IT.java</exclude>
           </excludes>
+          <!-- Byte Buddy 1.14.x only officially supports up to Java 22.
+               This flag allows it to instrument classes on Java 23+.
+               Remove once mockito-core ships with Byte Buddy 1.15+. -->
+          <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+          <!-- Safety net: if stale Java 25 .class files remain in target/ from a
+               previous build, Spring classpath scanner skips them instead of
+               throwing BeanDefinitionStoreException. Always prefer 'mvn clean test'. -->
+          <systemPropertyVariables>
+            <spring.classformat.ignore>true</spring.classformat.ignore>
+          </systemPropertyVariables>
         </configuration>
       </plugin>
 
