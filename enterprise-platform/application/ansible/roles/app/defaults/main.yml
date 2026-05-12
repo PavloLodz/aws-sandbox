@@ -1,0 +1,15 @@
+---
+# These defaults are overridden by group_vars/app_servers.yml
+# and by the actual values passed in from Terraform outputs.
+
+app_name:    aws-attempt
+app_user:    spring
+app_group:   spring
+app_dir:     /opt/aws-attempt
+app_port:    8080
+
+# Set these at deploy time via --extra-vars or group_vars:
+#   rds_hostname, rds_port, rds_db_name, rds_username, rds_password
+#   s3_bucket, s3_region
+
+spring_profiles_active: aws

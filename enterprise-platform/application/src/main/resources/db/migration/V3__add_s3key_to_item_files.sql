@@ -1,0 +1,2 @@
+ALTER TABLE item_files
+    ADD COLUMN s3key VARCHAR(512);

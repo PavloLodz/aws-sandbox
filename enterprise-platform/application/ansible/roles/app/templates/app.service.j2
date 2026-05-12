@@ -1,0 +1,36 @@
+[Unit]
+Description=aws-attempt Spring Boot application
+After=network.target
+
+[Service]
+User={{ app_user }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}
+ExecStart=/usr/bin/java \
+  -Djava.security.egd=file:/dev/./urandom \
+  -Dspring.profiles.active={{ spring_profiles_active }} \
+  -jar {{ app_dir }}/{{ app_name }}.jar
+
+# Environment — values come from Terraform outputs via Ansible vars
+Environment="SPRING_PROFILES_ACTIVE={{ spring_profiles_active }}"
+Environment="SERVER_PORT={{ app_port }}"
+Environment="RDS_HOSTNAME={{ rds_hostname }}"
+Environment="RDS_PORT={{ rds_port }}"
+Environment="RDS_DB_NAME={{ rds_db_name }}"
+Environment="RDS_USERNAME={{ rds_username }}"
+Environment="RDS_PASSWORD={{ rds_password }}"
+Environment="S3_BUCKET={{ s3_bucket }}"
+Environment="S3_REGION={{ s3_region }}"
+
+SuccessExitStatus=143
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ app_dir }}
+
+[Install]
+WantedBy=multi-user.target

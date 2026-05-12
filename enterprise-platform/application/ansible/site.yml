@@ -1,0 +1,24 @@
+---
+# Master playbook — runs all roles in order on the app servers.
+#
+# Usage:
+#   ansible-playbook -i inventory/dev/hosts.ini site.yml
+#   ansible-playbook -i inventory/prod/hosts.ini site.yml
+#
+# To run a single role only:
+#   ansible-playbook -i inventory/dev/hosts.ini site.yml --tags java
+#   ansible-playbook -i inventory/dev/hosts.ini site.yml --tags deploy
+
+- name: Configure and deploy aws-attempt application
+  hosts: app_servers
+  become: true
+
+  roles:
+    - role: security   # hardening: firewall, fail2ban
+      tags: security
+
+    - role: java       # install Amazon Corretto 21
+      tags: java
+
+    - role: app        # deploy JAR + systemd service
+      tags: deploy
