@@ -1,42 +1,22 @@
 services:
 
-  postgres:
+  db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-aws_attempt}
-      POSTGRES_USER: ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-myapp}
+      POSTGRES_USER: ${DB_USERNAME:-myapp}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5432:5432"          # optional: exposes DB to host for local tooling
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-aws_attempt}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-myapp} -d ${DB_NAME:-myapp}"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 30s
-
-  localstack:
-    image: localstack/localstack:3
-    restart: unless-stopped
-    environment:
-      SERVICES: s3
-      DEFAULT_REGION: us-east-1
-      LOCALSTACK_AUTH_TOKEN: ""
-    ports:
-      - "4566:4566"
-    volumes:
-      - localstack_data:/var/lib/localstack
-      # Auto-create the S3 bucket when LocalStack starts
-      - ./localstack-init:/etc/localstack/init/ready.d
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 15
-      start_period: 20s
 
   app:
     build:
@@ -45,26 +25,16 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      # PostgreSQL
-      DB_HOST: postgres
+      DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-aws_attempt}
-      DB_USERNAME: ${DB_USERNAME:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      # S3 — points at LocalStack for local dev
-      S3_BUCKET: ${S3_BUCKET:-local-bucket}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ENDPOINT_OVERRIDE: http://localstack:4566
-      S3_ACCESS_KEY: test
-      S3_SECRET_KEY: test
+      DB_NAME: ${DB_NAME:-myapp}
+      DB_USERNAME: ${DB_USERNAME:-myapp}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
     ports:
       - "${APP_PORT:-8080}:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
-      localstack:
+      db:
         condition: service_healthy
 
 volumes:
-  postgres_data:
-  localstack_data:
+  pgdata:

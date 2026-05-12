@@ -17,7 +17,7 @@ mvn clean test
 mvn clean integration-test
 ```
 
-## Local (default). All tests (Unit + Integration). Requires Docker (Testcontainers).
+## All tests (Unit + Integration). Requires Docker (Testcontainers).
 ```bash
 mvn clean verify
 ```

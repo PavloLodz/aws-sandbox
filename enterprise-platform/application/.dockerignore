@@ -1,0 +1,10 @@
+# Copy of ci/shared/.dockerignore — keep both files in sync.
+target/
+.git/
+*.md
+.env*
+infrastructure/
+gitops/
+ci/
+docs/
+scripts/
