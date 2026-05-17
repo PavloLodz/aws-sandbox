@@ -68,10 +68,12 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
 
 # Application startup command
 #
-# java -jar app.jar -> starts Spring Boot application
+# CMD (not ENTRYPOINT) allows overriding(!!!) with docker run arguments.
+# For example: docker run --rm myapp:local whoami  -> prints "appuser"
+# Normal start: docker run myapp:local             -> starts Spring Boot
 #
 # -Djava.security.egd=file:/dev/./urandom
 # improves startup speed by using non-blocking entropy source
-ENTRYPOINT ["java", \
+CMD ["java", \
   "-Djava.security.egd=file:/dev/./urandom", \
   "-jar", "app.jar"]
