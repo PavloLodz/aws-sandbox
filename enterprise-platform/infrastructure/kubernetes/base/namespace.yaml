@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+    version: "0.0.1"
+    component: namespace
+    managed-by: kubectl

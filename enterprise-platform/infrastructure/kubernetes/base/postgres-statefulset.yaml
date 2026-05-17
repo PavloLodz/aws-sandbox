@@ -1,0 +1,80 @@
+# =============================================================================
+# LOCAL DEV ONLY
+# This StatefulSet runs PostgreSQL inside minikube for local development.
+# Production uses a managed PostgreSQL instance provisioned by Terraform (Topic 4).
+# Do NOT use this manifest in staging or production environments.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: myapp
+  labels:
+    app: postgres
+    version: "0.0.1"
+    component: database
+    managed-by: kubectl
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: myapp
+  labels:
+    app: postgres
+    version: "0.0.1"
+    component: database
+    managed-by: kubectl
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        component: database
+        managed-by: kubectl
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secret
+                  key: DB_NAME
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secret
+                  key: DB_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
