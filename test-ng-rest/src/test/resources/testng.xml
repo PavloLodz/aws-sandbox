@@ -22,6 +22,15 @@
     <listener class-name="org.testng.reporters.XMLReporter"/>
   </listeners>
 
+  <!-- Actuator tests -->
+  <test name="Health Probe Tests">
+    <classes>
+      <class name="pl.ldz.example.tests.actuator.ActuatorHealthTest"/>
+    </classes>
+  </test>
+
+
+
   <!--
     All classes that declare dependsOnGroups="create" must be in the same
     <test> block as CreateItemTest, so TestNG can resolve the "create" group.

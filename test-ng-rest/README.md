@@ -43,6 +43,7 @@ then:
 
 ```bash
 mvn clean test
+mvn clean test -Dbase.url=http://localhost:8080
 ```
 
 ### Against a custom host
