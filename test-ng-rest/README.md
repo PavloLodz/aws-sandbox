@@ -43,12 +43,13 @@ then:
 
 ```bash
 mvn clean test
-mvn clean test -Dbase.url=http://localhost:8080
 ```
 
 ### Against a custom host
 
 ```bash
+k8s:
+mvn clean test -Dbase.url=http://myapp.local
 mvn clean test -Dbase.url=http://myserver:8080
 ```
 

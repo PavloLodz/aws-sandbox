@@ -3,5 +3,7 @@
 ```
 mvn clean test
 
-mvn clean test -Dbase.url=http://myserver:8080
+mvn clean test -Dbase.url=http://myapp.local
+
+
 ```
