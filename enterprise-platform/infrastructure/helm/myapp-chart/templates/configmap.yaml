@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+  namespace: myapp
+  labels:
+    app: myapp
+    version: "0.0.1"
+    component: config
+    managed-by: kubectl
+data:
+  SPRING_PROFILES_ACTIVE: "docker"
+  LOGGING_LEVEL_ROOT: "INFO"
+  SERVER_PORT: "8080"

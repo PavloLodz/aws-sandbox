@@ -1,0 +1,13 @@
+apiVersion: v2
+name: myapp-chart
+description: Helm chart for deploying the myapp Spring Boot application to Kubernetes/OpenShift
+type: application
+version: 0.1.0
+appVersion: "0.0.1-SNAPSHOT"
+icon: ""
+keywords:
+  - java
+  - spring-boot
+  - postgres
+maintainers:
+  - name: platform-team

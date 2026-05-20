@@ -1,0 +1,86 @@
+# ─── Image ────────────────────────────────────────────────────────────────────
+image:
+  registry: ""           # e.g. docker.io or quay.io — empty means local
+  repository: myapp
+  tag: local
+  pullPolicy: Never      # minikube local image — change to IfNotPresent for CI/CD
+
+# ─── Replicas ─────────────────────────────────────────────────────────────────
+replicaCount: 2
+
+# ─── Resources ────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ─── Liveness Probe ───────────────────────────────────────────────────────────
+livenessProbe:
+  path: /actuator/health/liveness
+  port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  failureThreshold: 3
+
+# ─── Readiness Probe ──────────────────────────────────────────────────────────
+readinessProbe:
+  path: /actuator/health/readiness
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+
+# ─── Service ──────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ─── Ingress ──────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  host: myapp.local
+  className: nginx
+  rewriteTarget: /
+
+# ─── Namespace ────────────────────────────────────────────────────────────────
+namespace: myapp
+
+# ─── ServiceAccount ───────────────────────────────────────────────────────────
+serviceAccount:
+  name: myapp
+  automountServiceAccountToken: false
+
+# ─── HPA ──────────────────────────────────────────────────────────────────────
+hpa:
+  minReplicas: 2
+  maxReplicas: 5
+  cpuUtilizationPercentage: 70
+
+# ─── PDB ──────────────────────────────────────────────────────────────────────
+pdb:
+  minAvailable: 1
+
+# LOCAL DEV ONLY — production uses managed PostgreSQL provisioned by Terraform
+# ─── PostgreSQL ───────────────────────────────────────────────────────────────
+postgres:
+  image: postgres:16-alpine
+  storageSize: 1Gi
+
+# ─── App Config (ConfigMap values) ────────────────────────────────────────────
+config:
+  springProfile: docker
+  loggingLevel: INFO
+  serverPort: "8080"
+
+# DEV ONLY — override via --set or external secrets manager in staging/prod
+# ─── Secrets ──────────────────────────────────────────────────────────────────
+secret:
+  dbHost: postgres
+  dbPort: "5432"
+  dbName: myapp
+  dbUsername: myapp
+  dbPassword: changeme
+  postgresPassword: changeme
