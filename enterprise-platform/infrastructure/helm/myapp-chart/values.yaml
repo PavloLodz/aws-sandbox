@@ -66,6 +66,7 @@ pdb:
 # LOCAL DEV ONLY — production uses managed PostgreSQL provisioned by Terraform
 # ─── PostgreSQL ───────────────────────────────────────────────────────────────
 postgres:
+  enabled: true
   image: postgres:16-alpine
   storageSize: 1Gi
 

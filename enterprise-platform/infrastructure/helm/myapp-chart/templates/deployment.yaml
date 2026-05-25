@@ -1,18 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: myapp
-  namespace: myapp
+  name: {{ .Release.Name }}
+  namespace: {{ .Values.namespace }}
   labels:
-    app: myapp
-    version: "0.0.1"
-    component: app
-    managed-by: kubectl
+    {{- include "myapp.labels" . | nindent 4 }}
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: myapp
+      {{- include "myapp.selectorLabels" . | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -21,12 +18,9 @@ spec:
   template:
     metadata:
       labels:
-        app: myapp
-        version: "0.0.1"
-        component: app
-        managed-by: kubectl
+        {{- include "myapp.labels" . | nindent 8 }}
     spec:
-      serviceAccountName: myapp
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       terminationGracePeriodSeconds: 60
       topologySpreadConstraints:
         - maxSkew: 1
@@ -34,36 +28,31 @@ spec:
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
-              app: myapp
+              {{- include "myapp.selectorLabels" . | nindent 14 }}
       containers:
-        - name: myapp
-          image: myapp:local
-          imagePullPolicy: Never
+        - name: {{ .Release.Name }}
+          image: {{ include "myapp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: 8080
+            - containerPort: {{ .Values.service.port }}
           resources:
-            requests:
-              cpu: 250m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+            {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
             httpGet:
-              path: /actuator/health/liveness
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 30
-            failureThreshold: 3
+              path: {{ .Values.livenessProbe.path }}
+              port: {{ .Values.livenessProbe.port }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
           readinessProbe:
             httpGet:
-              path: /actuator/health/readiness
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 3
+              path: {{ .Values.readinessProbe.path }}
+              port: {{ .Values.readinessProbe.port }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
           envFrom:
             - configMapRef:
-                name: myapp-config
+                name: {{ .Release.Name }}-config
             - secretRef:
-                name: myapp-secret
+                name: {{ .Release.Name }}-secret

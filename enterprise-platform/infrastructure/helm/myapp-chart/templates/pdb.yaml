@@ -1,15 +1,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: myapp
-  namespace: myapp
+  name: {{ .Release.Name }}-pdb
+  namespace: {{ .Values.namespace }}
   labels:
-    app: myapp
-    version: "0.0.1"
-    component: pdb
-    managed-by: kubectl
+    {{- include "myapp.labels" . | nindent 4 }}
 spec:
-  minAvailable: 1
+  minAvailable: {{ .Values.pdb.minAvailable }}
   selector:
     matchLabels:
-      app: myapp
+      {{- include "myapp.selectorLabels" . | nindent 6 }}

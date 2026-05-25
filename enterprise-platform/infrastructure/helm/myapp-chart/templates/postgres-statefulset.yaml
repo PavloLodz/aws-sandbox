@@ -1,3 +1,4 @@
+{{- if .Values.postgres.enabled }}
 # =============================================================================
 # LOCAL DEV ONLY
 # This StatefulSet runs PostgreSQL inside minikube for local development.
@@ -8,12 +9,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: myapp
+  namespace: {{ .Values.namespace }}
   labels:
-    app: postgres
-    version: "0.0.1"
-    component: database
-    managed-by: kubectl
+    {{- include "myapp.labels" . | nindent 4 }}
 spec:
   clusterIP: None
   selector:
@@ -26,12 +24,9 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: myapp
+  namespace: {{ .Values.namespace }}
   labels:
-    app: postgres
-    version: "0.0.1"
-    component: database
-    managed-by: kubectl
+    {{- include "myapp.labels" . | nindent 4 }}
 spec:
   serviceName: postgres
   replicas: 1
@@ -41,30 +36,28 @@ spec:
   template:
     metadata:
       labels:
-        app: postgres
-        component: database
-        managed-by: kubectl
+        {{- include "myapp.labels" . | nindent 8 }}
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: {{ .Values.postgres.image }}
           ports:
             - containerPort: 5432
           env:
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: myapp-secret
+                  name: {{ .Release.Name }}-secret
                   key: DB_NAME
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: myapp-secret
+                  name: {{ .Release.Name }}-secret
                   key: DB_USERNAME
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: myapp-secret
+                  name: {{ .Release.Name }}-secret
                   key: POSTGRES_PASSWORD
           volumeMounts:
             - name: pgdata
@@ -77,4 +70,5 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: 1Gi
+            storage: {{ .Values.postgres.storageSize }}
+{{- end }}

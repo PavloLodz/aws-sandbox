@@ -1,11 +1,8 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: myapp
+  name: {{ .Values.namespace }}
   annotations:
     helm.sh/resource-policy: keep
   labels:
-    app: myapp
-    version: "0.0.1"
-    component: namespace
-    managed-by: kubectl
+    {{- include "myapp.labels" . | nindent 4 }}
