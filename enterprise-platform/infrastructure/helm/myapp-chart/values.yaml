@@ -85,3 +85,18 @@ secret:
   dbUsername: myapp
   dbPassword: changeme
   postgresPassword: changeme
+
+# ─── OpenShift ────────────────────────────────────────────────────────────────
+# Set to true only via values-openshift.yaml; never enable in base
+openshift: false
+
+# ─── Monitoring ───────────────────────────────────────────────────────────────
+monitoring:
+  enabled: false          # flip to true in values-k8s.yaml
+  namespace: monitoring   # namespace where Prometheus Operator is installed
+
+# ─── Route (OpenShift only) ───────────────────────────────────────────────────
+route:
+  enabled: false      # overridden to true in values-openshift.yaml
+  host: ""
+  targetPort: 8080

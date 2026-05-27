@@ -1,0 +1,31 @@
+Release {{ .Release.Name }} deployed to namespace {{ .Values.namespace }}.
+
+{{- if .Values.openshift }}
+
+  OpenShift Route URL:
+    https://{{ .Values.route.host }}/
+
+{{- else if .Values.ingress.enabled }}
+
+  Application URL:
+    http://{{ .Values.ingress.host }}/
+
+  Swagger UI:
+    http://{{ .Values.ingress.host }}/swagger-ui.html
+
+  Hint — if using minikube, add the following entry to /etc/hosts:
+    $(minikube ip)  {{ .Values.ingress.host }}
+
+{{- else }}
+
+  No Ingress or Route is configured. Use port-forward to reach the app:
+    kubectl port-forward -n {{ .Values.namespace }} svc/{{ .Release.Name }} 8080:8080
+
+  Then open:
+    http://localhost:8080/
+
+{{- end }}
+
+Health endpoints:
+  Liveness:   http://<host>/actuator/health/liveness
+  Readiness:  http://<host>/actuator/health/readiness

@@ -1,0 +1,24 @@
+# OpenShift overrides — apply with:
+#   helm upgrade --install myapp . -f values-openshift.yaml
+# Note: used in Topic 10 (OpenShift / CRC)
+
+openshift: true
+
+securityContext:
+  runAsNonRoot: true
+  # runAsUser is intentionally omitted — OpenShift assigns UIDs via SCC;
+  # hard-coding a UID causes pod admission to fail against the project's SCC range.
+
+ingress:
+  enabled: false      # OpenShift does not use the nginx Ingress controller
+
+route:
+  enabled: true
+  host: myapp.apps.crc.testing    # default CRC wildcard domain; override for other clusters
+  targetPort: 8080
+
+replicaCount: 2
+
+config:
+  springProfile: docker
+  loggingLevel: INFO
