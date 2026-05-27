@@ -1,0 +1,25 @@
+# Dev environment overrides — apply with:
+#   helm upgrade --install myapp . -f values-dev.yaml
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+config:
+  springProfile: local
+  loggingLevel: DEBUG
+
+ingress:
+  enabled: true
+  host: myapp.dev.local
+  className: nginx
+  rewriteTarget: /
+
+monitoring:
+  enabled: false
