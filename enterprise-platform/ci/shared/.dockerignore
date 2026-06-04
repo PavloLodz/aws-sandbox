@@ -1,0 +1,9 @@
+target/
+.git/
+*.md
+.env*
+infrastructure/
+gitops/
+ci/
+docs/
+scripts/

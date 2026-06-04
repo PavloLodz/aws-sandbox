@@ -1,0 +1,73 @@
+name: Helm Lint & Template
+
+on:
+  push:
+    paths:
+      - 'infrastructure/helm/myapp-chart/**'
+  pull_request:
+    paths:
+      - 'infrastructure/helm/myapp-chart/**'
+
+jobs:
+  helm-validate:
+    name: Lint and Template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.17.x'
+
+      # ── Lint all four value-file combinations ────────────────────────────────
+      - name: Lint — base values only
+        run: helm lint infrastructure/helm/myapp-chart
+
+      - name: Lint — dev overrides
+        run: >
+          helm lint infrastructure/helm/myapp-chart
+          -f infrastructure/helm/myapp-chart/values-dev.yaml
+
+      - name: Lint — k8s (production) overrides
+        run: >
+          helm lint infrastructure/helm/myapp-chart
+          -f infrastructure/helm/myapp-chart/values-k8s.yaml
+
+      - name: Lint — OpenShift overrides
+        run: >
+          helm lint infrastructure/helm/myapp-chart
+          -f infrastructure/helm/myapp-chart/values-openshift.yaml
+
+      # ── Template render assertions ───────────────────────────────────────────
+      - name: Template — dev (assert replicas=1, DEBUG logging, Ingress rendered, no Route, no ServiceMonitor)
+        run: |
+          OUTPUT=$(helm template myapp infrastructure/helm/myapp-chart \
+            -f infrastructure/helm/myapp-chart/values-dev.yaml)
+          echo "$OUTPUT" | grep -q  "replicas: 1"          || { echo "FAIL: replicas != 1"; exit 1; }
+          echo "$OUTPUT" | grep -q  "loggingLevel: DEBUG"   || { echo "FAIL: loggingLevel != DEBUG"; exit 1; }
+          echo "$OUTPUT" | grep -q  "kind: Ingress"         || { echo "FAIL: Ingress not rendered"; exit 1; }
+          echo "$OUTPUT" | grep -qv "kind: Route"           || { echo "FAIL: Route must not be rendered"; exit 1; }
+          echo "$OUTPUT" | grep -qv "kind: ServiceMonitor"  || { echo "FAIL: ServiceMonitor must not be rendered"; exit 1; }
+
+      - name: Template — k8s (assert replicas=3, WARN logging, Ingress rendered, ServiceMonitor rendered, no Route)
+        run: |
+          OUTPUT=$(helm template myapp infrastructure/helm/myapp-chart \
+            -f infrastructure/helm/myapp-chart/values-k8s.yaml)
+          echo "$OUTPUT" | grep -q  "replicas: 3"           || { echo "FAIL: replicas != 3"; exit 1; }
+          echo "$OUTPUT" | grep -q  "loggingLevel: WARN"    || { echo "FAIL: loggingLevel != WARN"; exit 1; }
+          echo "$OUTPUT" | grep -q  "kind: Ingress"         || { echo "FAIL: Ingress not rendered"; exit 1; }
+          echo "$OUTPUT" | grep -q  "kind: ServiceMonitor"  || { echo "FAIL: ServiceMonitor not rendered"; exit 1; }
+          echo "$OUTPUT" | grep -qv "kind: Route"           || { echo "FAIL: Route must not be rendered"; exit 1; }
+
+      - name: Template — OpenShift (assert Route rendered, no Ingress, no ServiceMonitor, runAsNonRoot, no runAsUser)
+        run: |
+          OUTPUT=$(helm template myapp infrastructure/helm/myapp-chart \
+            -f infrastructure/helm/myapp-chart/values-openshift.yaml)
+          echo "$OUTPUT" | grep -q  "kind: Route"           || { echo "FAIL: Route not rendered"; exit 1; }
+          echo "$OUTPUT" | grep -qv "kind: Ingress"         || { echo "FAIL: Ingress must not be rendered"; exit 1; }
+          echo "$OUTPUT" | grep -qv "kind: ServiceMonitor"  || { echo "FAIL: ServiceMonitor must not be rendered"; exit 1; }
+          echo "$OUTPUT" | grep -q  "runAsNonRoot: true"    || { echo "FAIL: runAsNonRoot not set"; exit 1; }
+          echo "$OUTPUT" | grep -qv "runAsUser:"            || { echo "FAIL: runAsUser must not be present"; exit 1; }
