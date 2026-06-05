@@ -1,0 +1,68 @@
+# ci/github-actions/terraform-ci.yml
+#
+# Implements R4.8: Terraform format check, validation, and tfsec security scan
+# for all three environments in parallel.
+#
+# This workflow is triggered only when files under infrastructure/terraform/**
+# are changed — it is skipped entirely when only application code, Helm charts,
+# or docs are modified.
+
+name: Terraform CI
+
+on:
+  push:
+    paths:
+      - 'infrastructure/terraform/**'
+  pull_request:
+    paths:
+      - 'infrastructure/terraform/**'
+
+jobs:
+  terraform-validate:
+    name: Format, Validate, Security Scan
+    runs-on: ubuntu-latest
+
+    # A broken module variable reference caught in dev would also fail for
+    # staging and prod — all three must be green before a PR can merge.
+    strategy:
+      matrix:
+        environment: [dev, staging, prod]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.8.x'
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive infrastructure/terraform/
+        # Fails if any .tf file is not canonically formatted.
+        # Fix locally with: terraform fmt -recursive infrastructure/terraform/
+        # Running over the entire tree means a formatting error in a shared module
+        # is caught once rather than once per environment.
+
+      - name: Terraform Init (no backend)
+        working-directory: infrastructure/terraform/environments/${{ matrix.environment }}
+        run: terraform init -backend=false
+        # -backend=false skips the remote state connection so no cloud credentials
+        # are needed for this validation step. Real applies run separately with
+        # credentials scoped to the specific environment.
+
+      - name: Terraform Validate
+        working-directory: infrastructure/terraform/environments/${{ matrix.environment }}
+        run: terraform validate
+        # Validates HCL syntax, module references, and variable type compatibility
+        # without making any provider API calls. Catches missing required variables,
+        # mismatched output references, and type errors before code reaches review.
+
+      - name: Run tfsec security scan
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: infrastructure/terraform/
+          soft_fail: false
+          # soft_fail: false blocks the PR on HIGH or CRITICAL security findings.
+          # Security issues are not advisory — they block the merge.
+          # Run locally with: tfsec infrastructure/terraform/
