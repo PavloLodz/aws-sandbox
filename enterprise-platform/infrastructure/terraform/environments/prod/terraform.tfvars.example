@@ -1,0 +1,33 @@
+# environments/prod/terraform.tfvars.example
+#
+# HOW TO USE THIS FILE:
+#   1. Copy this file to terraform.tfvars:
+#        cp terraform.tfvars.example terraform.tfvars
+#   2. terraform.tfvars is gitignored — never commit it.
+#      This example file is committed so every developer has a working template.
+#
+# SECRETS: Do not add any passwords, tokens, or API keys to this file or to
+# terraform.tfvars. The database password is generated automatically by
+# random_password at apply time and stored in the secrets management service.
+# Nothing secret ever belongs in a .tfvars file.
+
+project     = "myapp"
+environment = "prod"
+region      = "us-east-1"   # replace with your provider's region identifier
+
+network_cidr         = "10.2.0.0/16"
+availability_zones   = ["zone-a", "zone-b", "zone-c"]   # prod spans three AZs for high availability
+public_subnet_cidrs  = ["10.2.1.0/24", "10.2.2.0/24", "10.2.3.0/24"]
+private_subnet_cidrs = ["10.2.10.0/24", "10.2.20.0/24", "10.2.30.0/24"]
+
+kubernetes_version = "1.30"
+node_instance_type = "standard-8vcpu-16gb"   # replace with a real large instance type (e.g. t3.2xlarge on AWS)
+node_min_size      = 2     # prod always keeps a minimum of 2 nodes for availability
+node_max_size      = 10
+node_desired_size  = 3
+
+db_instance_class    = "db.large"   # replace with a real production instance class (e.g. db.r6g.large on AWS)
+db_allocated_storage = 100
+multi_az             = true    # Multi-AZ standby replica required in prod for HA
+deletion_protection  = true    # prevents accidental deletion of the production database
+skip_final_snapshot  = false   # always retain a recovery snapshot before destroy in prod

@@ -10,10 +10,13 @@ terraform {
   required_providers {
     # Replace this block with the chosen provider when cloud deployment begins.
     # The module calls below do not change — only this provider block changes.
-    random = { source = "hashicorp/random", version = "~> 3.6" }
-    # Example AWS:    aws     = { source = "hashicorp/aws",     version = "~> 5.0" }
-    # Example GCP:    google  = { source = "hashicorp/google",  version = "~> 5.0" }
-    # Example Azure:  azurerm = { source = "hashicorp/azurerm", version = "~> 3.0" }
+    random {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+    # Example AWS:    aws { source = "hashicorp/aws", version = "~> 5.0" }
+    # Example GCP:    google { source = "hashicorp/google", version = "~> 5.0" }
+    # Example Azure:  azurerm { source = "hashicorp/azurerm", version = "~> 3.0" }
   }
 }
 

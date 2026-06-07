@@ -1,0 +1,33 @@
+# environments/dev/terraform.tfvars.example
+#
+# HOW TO USE THIS FILE:
+#   1. Copy this file to terraform.tfvars:
+#        cp terraform.tfvars.example terraform.tfvars
+#   2. terraform.tfvars is gitignored — never commit it.
+#      This example file is committed so every developer has a working template.
+#
+# SECRETS: Do not add any passwords, tokens, or API keys to this file or to
+# terraform.tfvars. The database password is generated automatically by
+# random_password at apply time and stored in the secrets management service.
+# Nothing secret ever belongs in a .tfvars file.
+
+project     = "myapp"
+environment = "dev"
+region      = "us-east-1"   # replace with your provider's region identifier (e.g. eu-west-1, us-central1)
+
+network_cidr         = "10.0.0.0/16"
+availability_zones   = ["zone-a", "zone-b"]   # replace with real zone names for your chosen provider
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+
+kubernetes_version = "1.30"
+node_instance_type = "standard-2vcpu-4gb"   # replace with a real instance type (e.g. t3.medium on AWS, e2-standard-2 on GCP)
+node_min_size      = 1
+node_max_size      = 3
+node_desired_size  = 1
+
+db_instance_class    = "db.small"   # replace with a real instance class (e.g. db.t3.micro on AWS)
+db_allocated_storage = 20
+multi_az             = false
+deletion_protection  = false
+skip_final_snapshot  = true
