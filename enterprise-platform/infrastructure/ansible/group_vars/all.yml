@@ -1,0 +1,21 @@
+---
+# group_vars/all.yml — shared defaults applied to every host in every group. No secrets here.
+
+# ── Application ──
+app_name: myapp
+app_port: 8080
+health_endpoint: "http://localhost:{{ app_port }}/actuator/health"
+
+# ── Health check ──
+health_timeout_seconds: 60       # total seconds to wait for the health endpoint before failing
+health_retry_delay_seconds: 5    # seconds between health check retries
+
+# ── Container registry ──
+container_registry: "{{ registry_url }}"  # injected from Terraform output
+image_tag: latest                          # overridden per-environment or at playbook runtime via IMAGE_TAG env var
+
+# ── Monitoring ──
+node_exporter_port: 9090   # must match the ufw allow rule in hardening.yml
+
+# ── Java ──
+java_home: /usr/lib/jvm/java-21-openjdk-amd64   # must match java_home in roles/java/defaults/main.yml

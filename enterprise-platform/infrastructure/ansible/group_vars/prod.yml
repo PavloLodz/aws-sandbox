@@ -1,0 +1,21 @@
+---
+# group_vars/prod.yml — prod environment overrides. Vault-encrypted secrets use the !vault tag.
+
+# override at runtime: IMAGE_TAG=1.2.3 ansible-playbook playbooks/deploy.yml -i inventory/prod
+image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest') }}"
+
+db_host: "{{ rds_endpoint }}"  # populated from Terraform output after terraform apply
+db_name: myapp
+db_user: myapp
+
+# Vault-encrypted — generate with:
+#   ansible-vault encrypt_string 'actual-password' --name 'db_password'
+# Then replace the placeholder ciphertext below with the output.
+# Note: the prod vault password should be stored separately from dev/staging.
+# In team environments, consider using --vault-id prod@vault-pass to scope
+# encryption keys per environment (e.g. ansible-vault encrypt_string --vault-id prod@vault-pass).
+db_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  <replace-with-encrypted-ciphertext>
+
+environment: prod

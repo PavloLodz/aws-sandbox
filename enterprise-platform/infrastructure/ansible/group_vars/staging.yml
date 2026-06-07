@@ -1,0 +1,20 @@
+---
+# group_vars/staging.yml — staging environment overrides. Vault-encrypted secrets use the !vault tag.
+
+# override at runtime: IMAGE_TAG=1.2.3 ansible-playbook playbooks/deploy.yml -i inventory/staging
+image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest') }}"
+
+db_host: "{{ rds_endpoint }}"  # populated from Terraform output after terraform apply
+db_name: myapp
+db_user: myapp
+
+# Vault-encrypted — generate with:
+#   ansible-vault encrypt_string 'actual-password' --name 'db_password'
+# Then replace the placeholder ciphertext below with the output.
+# Note: staging db_password is independently encrypted from dev — a compromised dev vault
+# key does not expose staging credentials.
+db_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  <replace-with-encrypted-ciphertext>
+
+environment: staging
