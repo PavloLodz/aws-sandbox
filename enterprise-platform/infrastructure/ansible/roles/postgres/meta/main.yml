@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  role_name: postgres
+  description: "Installs PostgreSQL client tools and configures .pgpass"
+  min_ansible_version: "2.14"
+dependencies: []

@@ -1,0 +1,4 @@
+---
+java_package: openjdk-21-jdk
+java_home: /usr/lib/jvm/java-21-openjdk-amd64
+java_home_profile_path: /etc/profile.d/java.sh

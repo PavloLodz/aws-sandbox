@@ -1,0 +1,33 @@
+---
+- name: Add PostgreSQL APT signing key
+  ansible.builtin.apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+  become: true
+
+- name: Add PostgreSQL APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+  become: true
+
+- name: Install PostgreSQL client tools
+  ansible.builtin.apt:
+    name: "{{ postgres_client_packages }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Create .pgpass with restricted permissions
+  ansible.builtin.template:
+    src: pgpass.j2
+    dest: "{{ pgpass_path }}"
+    mode: "0600"  # PostgreSQL refuses to use .pgpass unless it is 0600
+  no_log: true    # suppress .pgpass contents from Ansible output
+  when: db_password is defined
+
+- name: Verify pg_isready is available
+  ansible.builtin.command:
+    cmd: pg_isready --version
+  changed_when: false

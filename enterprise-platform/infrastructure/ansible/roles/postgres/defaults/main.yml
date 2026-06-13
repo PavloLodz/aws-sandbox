@@ -1,0 +1,6 @@
+---
+postgres_client_packages:
+  - postgresql-client
+  - libpq-dev
+postgres_version: "16"
+pgpass_path: "{{ ansible_env.HOME }}/.pgpass"

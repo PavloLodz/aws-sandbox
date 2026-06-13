@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  role_name: java
+  description: "Installs OpenJDK 21 and sets JAVA_HOME system-wide"
+  min_ansible_version: "2.14"
+dependencies: []

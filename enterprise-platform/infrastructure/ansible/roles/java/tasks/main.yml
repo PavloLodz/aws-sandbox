@@ -1,0 +1,31 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600  # skip update if cache is < 1 hour old (idempotency)
+  become: true
+
+- name: Install OpenJDK 21
+  ansible.builtin.apt:
+    name: "{{ java_package }}"
+    state: present
+  become: true
+
+- name: Set JAVA_HOME system-wide via /etc/profile.d
+  ansible.builtin.copy:
+    dest: "{{ java_home_profile_path }}"
+    content: |
+      export JAVA_HOME="{{ java_home }}"
+      export PATH="$JAVA_HOME/bin:$PATH"
+    mode: "0644"
+  become: true
+
+- name: Verify Java installation
+  ansible.builtin.command:
+    cmd: java -version
+  register: java_version_output
+  changed_when: false  # version check never counts as a change
+
+- name: Show Java version
+  ansible.builtin.debug:
+    msg: "Installed: {{ java_version_output.stderr }}"  # java -version writes to stderr
