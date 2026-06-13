@@ -1,0 +1,69 @@
+---
+# playbooks/deploy.yml
+# Pull the Docker image from ECR, restart the container, verify health.
+# Run with: make ansible-deploy
+#           ansible-playbook playbooks/deploy.yml -i inventory/dev
+#           IMAGE_TAG=1.2.3 ansible-playbook playbooks/deploy.yml -i inventory/dev
+
+- name: Deploy application container
+  hosts: all
+  become: true
+
+  vars:
+    container_name: "{{ app_name }}"
+    full_image: "{{ container_registry }}/{{ app_name }}:{{ image_tag }}"  # combines registry, app name, and tag
+
+  tasks:
+
+    - name: Log in to container registry
+      community.docker.docker_login:
+        registry_url: "{{ container_registry }}"
+        username: "{{ registry_username | default(omit) }}"  # Credentials injected from vault-encrypted group_vars
+        password: "{{ registry_password | default(omit) }}"
+      no_log: true
+
+    - name: Pull latest image
+      community.docker.docker_image:
+        name: "{{ full_image }}"
+        source: pull
+        force_source: true    # always pull even if tag already exists locally — ensures latest digest is fetched
+
+    - name: Stop and remove existing container (if running)
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: absent
+        force_kill: true
+
+    - name: Start new container
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ full_image }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ app_port }}:{{ app_port }}"
+        env:
+          SPRING_PROFILES_ACTIVE: "{{ environment }}"
+          DB_HOST: "{{ db_host }}"
+          DB_NAME: "{{ db_name }}"
+          DB_USER: "{{ db_user }}"
+          DB_PASSWORD: "{{ db_password }}"    # vault-encrypted in group_vars — never hardcoded
+        healthcheck:
+          test: ["CMD", "curl", "-f", "{{ health_endpoint }}"]
+          interval: 10s
+          timeout: 5s
+          retries: 6
+
+    - name: Wait for health endpoint to respond
+      ansible.builtin.uri:
+        url: "{{ health_endpoint }}"
+        method: GET
+        status_code: 200
+      register: health_result
+      until: health_result.status == 200
+      retries: "{{ (health_timeout_seconds / health_retry_delay_seconds) | int }}"
+      delay: "{{ health_retry_delay_seconds }}"
+
+    - name: Confirm deployment succeeded
+      ansible.builtin.debug:
+        msg: "Deployed {{ full_image }} — health check passed ({{ health_result.status }})"

@@ -1,0 +1,6 @@
+---
+# ansible-lint configuration
+# var-naming[no-role-prefix]: node_exporter_* vars in the monitoring role follow
+# the upstream node_exporter naming convention intentionally.
+skip_list:
+  - var-naming[no-role-prefix]

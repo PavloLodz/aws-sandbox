@@ -1,0 +1,48 @@
+# ci/github-actions/ansible-ci.yml
+#
+# Implements R5.10: ansible-lint on all playbooks and roles on every push or
+# pull request that touches infrastructure/ansible/**.
+#
+# This workflow is triggered only when files under infrastructure/ansible/**
+# are changed — it is skipped entirely when only application code, Helm charts,
+# Terraform configs, or docs are modified (same path-filter pattern as
+# terraform-ci.yml).
+
+name: Ansible CI
+
+on:
+  push:
+    paths:
+      - 'infrastructure/ansible/**'
+  pull_request:
+    paths:
+      - 'infrastructure/ansible/**'
+
+jobs:
+  ansible-lint:
+    name: Lint Playbooks and Roles
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ansible and ansible-lint
+        run: pip install ansible ansible-lint
+
+      - name: Run ansible-lint on all playbooks
+        working-directory: infrastructure/ansible
+        run: ansible-lint playbooks/
+        # ansible-lint playbooks/ also lints every role referenced via roles:
+        # in the playbooks — a single command validates the full project.
+        # Zero warnings required — any finding fails the job.
+        env:
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+          # Required so ansible-lint can decrypt vault-encrypted variables in
+          # group_vars/ when checking playbooks and roles. Without this,
+          # lint fails on every file that references a vault-encrypted variable.

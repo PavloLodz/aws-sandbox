@@ -1,6 +1,8 @@
 ---
 galaxy_info:
+  author: myapp
   role_name: monitoring
   description: "Installs Prometheus node exporter as a systemd service"
+  license: MIT
   min_ansible_version: "2.14"
 dependencies: []

@@ -22,7 +22,7 @@
 - name: Create .pgpass with restricted permissions
   ansible.builtin.template:
     src: pgpass.j2
-    dest: "{{ pgpass_path }}"
+    dest: "{{ postgres_pgpass_path }}"
     mode: "0600"  # PostgreSQL refuses to use .pgpass unless it is 0600
   no_log: true    # suppress .pgpass contents from Ansible output
   when: db_password is defined
