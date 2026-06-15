@@ -1,0 +1,53 @@
+# infrastructure/argocd/argocd-rbac-cm.yaml
+#
+# Implements R6.6: ArgoCD Role-Based Access Control configuration.
+# This ConfigMap controls role-based access across all ArgoCD users and CI
+# service accounts. It is applied to the argocd-rbac-cm ConfigMap that
+# ArgoCD reads at startup and on every reconcile.
+#
+# RBAC policy uses ArgoCD's project/appname resource format:
+#   p, role:<name>, <resource>, <action>, <project>/<appname>, allow|deny
+# The project name 'myapp' must match the AppProject name in myapp-project.yaml.
+#
+# Apply with:
+#   kubectl apply -f infrastructure/argocd/argocd-rbac-cm.yaml
+#
+# Reload without restart:
+#   kubectl rollout restart deployment/argocd-server -n argocd
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    # developer role — can sync dev only; read-only everywhere else
+    p, role:developer, applications, sync,     myapp/myapp-dev,      allow
+    p, role:developer, applications, get,      myapp/*,              allow
+    p, role:developer, applications, action/*, myapp/myapp-dev,      allow
+
+    # pipeline role (used by CI service account) — sync dev and staging
+    # A compromised CI token cannot trigger a prod sync — this role is
+    # intentionally scoped to myapp/myapp-dev and myapp/myapp-staging only.
+    p, role:pipeline, applications, sync,     myapp/myapp-dev,      allow
+    p, role:pipeline, applications, sync,     myapp/myapp-staging,  allow
+    p, role:pipeline, applications, get,      myapp/*,              allow
+    p, role:pipeline, applications, action/*, myapp/myapp-dev,      allow
+    p, role:pipeline, applications, action/*, myapp/myapp-staging,  allow
+
+    # admin role — full access including prod sync (manual approval in UI)
+    p, role:admin, applications, *,           myapp/*,              allow
+    p, role:admin, clusters,     get,         *,                    allow
+    p, role:admin, repositories, get,         *,                    allow
+
+    # Group → role bindings (adjust SSO group names to match your IdP)
+    g, platform-admins, role:admin
+    g, developers,      role:developer
+    g, ci-pipeline,     role:pipeline
+
+  policy.default: role:readonly
+  # policy.default: role:readonly — unauthenticated or unmatched users can view
+  # but cannot sync or modify anything. This is a safe baseline that prevents
+  # accidental privilege escalation when new team members are added to the
+  # cluster before being assigned to an SSO group.

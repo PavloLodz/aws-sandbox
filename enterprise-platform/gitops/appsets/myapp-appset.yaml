@@ -1,0 +1,76 @@
+# gitops/appsets/myapp-appset.yaml
+#
+# Implements R6.4: ApplicationSet using a list generator to produce one
+# ArgoCD Application per environment from a single template definition.
+#
+# The list generator is used (rather than a Git directory generator) because
+# the environment list is small and stable — adding an environment means
+# adding one element here rather than creating a new directory.
+#
+# NOTE: The individual apps/*/myapp.yaml files are retained alongside this
+# ApplicationSet. Those files are the target for CI image-tag patching and
+# prod-specific manual-sync configuration. This ApplicationSet is the
+# canonical DRY reference pattern.
+#
+# Apply with:
+#   kubectl apply -f gitops/appsets/myapp-appset.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: myapp-appset
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - environment: dev
+            namespace: myapp-dev
+            valuesFile: values-dev.yaml
+            automated: "true"
+            selfHeal: "true"
+            prune: "true"
+          - environment: staging
+            namespace: myapp-staging
+            valuesFile: values-staging.yaml
+            automated: "true"
+            selfHeal: "true"
+            prune: "true"
+          - environment: prod
+            namespace: myapp-prod
+            valuesFile: values-prod.yaml
+            automated: "false"   # prod requires manual sync
+            selfHeal: "false"
+            prune: "false"
+
+  template:
+    metadata:
+      name: 'myapp-{{environment}}'
+      namespace: argocd
+      labels:
+        app.kubernetes.io/name: myapp
+        environment: '{{environment}}'
+    spec:
+      project: myapp
+
+      source:
+        repoURL: https://github.com/<ORG>/<REPO>   # replace with actual repo URL
+        targetRevision: HEAD
+        path: infrastructure/helm/myapp-chart
+        helm:
+          valueFiles:
+            - values-k8s.yaml
+            - '{{valuesFile}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true

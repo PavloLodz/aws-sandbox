@@ -1,0 +1,29 @@
+# Staging environment overrides — apply with: helm upgrade --install myapp . -f values-k8s.yaml -f values-staging.yaml
+#
+# Layering order: values.yaml → values-k8s.yaml → values-staging.yaml
+# Only fields that differ from the base values.yaml or values-k8s.yaml are
+# listed here. All other fields inherit from those files.
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+config:
+  springProfile: docker
+  loggingLevel: INFO
+
+ingress:
+  enabled: true
+  host: myapp.staging.local
+  className: nginx
+  rewriteTarget: /
+
+monitoring:
+  enabled: true
+  namespace: monitoring

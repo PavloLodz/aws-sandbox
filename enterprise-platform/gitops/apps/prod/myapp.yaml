@@ -1,0 +1,52 @@
+# gitops/apps/prod/myapp.yaml
+#
+# Implements R6.3: ArgoCD Application for the production environment.
+#
+# IMPORTANT: Automated sync is intentionally ABSENT for prod.
+# The syncPolicy.automated block must never be added here.
+# Every prod deployment requires explicit manual approval:
+#
+#   argocd app sync myapp-prod
+#
+# or via the ArgoCD UI: Applications → myapp-prod → Sync.
+#
+# This is a stronger guard than `automated: false` — no code path can
+# accidentally enable auto-sync for prod.
+#
+# Apply with:
+#   kubectl apply -f gitops/apps/prod/myapp.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: myapp
+    environment: prod
+spec:
+  project: myapp
+
+  source:
+    repoURL: https://github.com/<ORG>/<REPO>   # replace with actual repo URL
+    targetRevision: HEAD
+    path: infrastructure/helm/myapp-chart
+    helm:
+      valueFiles:
+        - values-k8s.yaml
+        - values-prod.yaml
+      parameters:
+        - name: image.tag
+          value: local   # CI writes to dev only; prod tag is promoted manually
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp-prod
+
+  syncPolicy:
+    # No automated block — prod requires manual sync approval.
+    # Run: argocd app sync myapp-prod
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true

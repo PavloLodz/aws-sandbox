@@ -1,0 +1,37 @@
+# infrastructure/argocd/argocd-ingress.yaml
+#
+# Implements R6.1: Expose the ArgoCD UI and API server via an nginx Ingress
+# on hostname argocd.local.
+#
+# One-time bootstrap per developer machine:
+#   echo "$(minikube ip)  argocd.local" | sudo tee -a /etc/hosts
+#
+# Apply with:
+#   kubectl apply -f infrastructure/argocd/argocd-ingress.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    # ArgoCD's API server terminates TLS itself — nginx must forward raw TLS
+    # directly to argocd-server without re-encrypting it. Without ssl-passthrough
+    # the argocd CLI fails with:
+    #   transport: Error while dialing: dial tcp ... connection refused
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    # Tells the nginx upstream to connect via HTTPS to the argocd-server pod.
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 443

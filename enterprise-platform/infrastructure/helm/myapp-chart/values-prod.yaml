@@ -1,0 +1,34 @@
+# Production environment overrides — apply with: helm upgrade --install myapp . -f values-k8s.yaml -f values-prod.yaml
+#
+# Layering order: values.yaml → values-k8s.yaml → values-prod.yaml
+# Only fields that differ from the base values.yaml or values-k8s.yaml are
+# listed here. All other fields inherit from those files.
+
+replicaCount: 3
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+config:
+  springProfile: docker
+  loggingLevel: WARN
+
+ingress:
+  enabled: true
+  host: myapp.prod.local
+  className: nginx
+  rewriteTarget: /
+
+hpa:
+  minReplicas: 3
+  maxReplicas: 10
+  cpuUtilizationPercentage: 60
+
+monitoring:
+  enabled: true
+  namespace: monitoring

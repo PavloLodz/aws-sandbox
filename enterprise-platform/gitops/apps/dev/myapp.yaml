@@ -1,0 +1,51 @@
+# gitops/apps/dev/myapp.yaml
+#
+# Implements R6.2: ArgoCD Application for the dev environment.
+# Fully automated sync — ArgoCD self-heals drift and prunes removed resources.
+#
+# CI updates the image.tag parameter on every successful build:
+#   yq e '(.spec.source.helm.parameters[] | select(.name == "image.tag")).value = env(IMAGE_TAG)' \
+#     -i gitops/apps/dev/myapp.yaml
+#
+# Apply with:
+#   kubectl apply -f gitops/apps/dev/myapp.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-dev
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: myapp
+    environment: dev
+  annotations:
+    # CI updates this field on each successful build — ArgoCD detects the
+    # commit and syncs automatically. Format: <registry>/<repository>:<sha>
+    argocd-image-updater.argoproj.io/image-list: myapp=<REGISTRY>/myapp
+spec:
+  project: myapp
+
+  source:
+    repoURL: https://github.com/<ORG>/<REPO>   # replace with actual repo URL
+    targetRevision: HEAD
+    path: infrastructure/helm/myapp-chart
+    helm:
+      valueFiles:
+        - values-k8s.yaml
+        - values-dev.yaml
+      parameters:
+        - name: image.tag
+          value: local   # CI overwrites this value on each successful build
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp-dev
+
+  syncPolicy:
+    automated:
+      selfHeal: true   # corrects drift within ~3 minutes
+      prune: true      # removes resources deleted from Git
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true

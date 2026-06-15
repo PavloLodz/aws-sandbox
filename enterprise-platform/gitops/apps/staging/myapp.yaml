@@ -1,0 +1,44 @@
+# gitops/apps/staging/myapp.yaml
+#
+# Implements R6.3: ArgoCD Application for the staging environment.
+# Fully automated sync — mirrors dev behaviour with staging-specific
+# namespace and value overrides (higher replica count, INFO logging).
+#
+# Apply with:
+#   kubectl apply -f gitops/apps/staging/myapp.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-staging
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: myapp
+    environment: staging
+spec:
+  project: myapp
+
+  source:
+    repoURL: https://github.com/<ORG>/<REPO>   # replace with actual repo URL
+    targetRevision: HEAD
+    path: infrastructure/helm/myapp-chart
+    helm:
+      valueFiles:
+        - values-k8s.yaml
+        - values-staging.yaml
+      parameters:
+        - name: image.tag
+          value: local   # CI overwrites this value on each successful build
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp-staging
+
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
