@@ -1,0 +1,89 @@
+# infrastructure/argocd/myapp-project.yaml
+#
+# Implements R6.7: ArgoCD AppProject that fences myapp applications to the
+# myapp-* namespaces and restricts the chart source to this repository only.
+#
+# Security boundaries enforced by this project:
+#   - Only this repository may be used as a Helm chart source (sourceRepos)
+#   - Only myapp-dev, myapp-staging, myapp-prod namespaces are valid targets
+#   - No cluster-scoped resources (ClusterRole, Namespace, CRDs) may be created
+#   - The resources-finalizer prevents accidental project deletion
+#
+# Apply with:
+#   kubectl apply -f infrastructure/argocd/myapp-project.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: myapp
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    # Prevents deletion of the project while Applications still reference it.
+    # Attempting to delete the project with live Applications will block until
+    # those Applications are removed first.
+spec:
+  description: "myapp Spring Boot application — all environments"
+
+  # Only allow deployments sourced from this repository.
+  # This prevents an attacker who gains write access to ArgoCD from deploying
+  # arbitrary Helm charts from external repositories.
+  sourceRepos:
+    - https://github.com/<ORG>/<REPO>   # replace with actual repo URL
+
+  # Only allow deployments to the myapp-* namespaces on the local cluster.
+  # Applications in this project cannot write resources into kube-system,
+  # argocd, or any other sensitive namespace.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: myapp-dev
+    - server: https://kubernetes.default.svc
+      namespace: myapp-staging
+    - server: https://kubernetes.default.svc
+      namespace: myapp-prod
+
+  # Permitted Kubernetes resource types — restrict to app-layer resources;
+  # deny cluster-scoped and privileged resources.
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: ServiceAccount
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+
+  # Deny cluster-scoped resource creation (ClusterRole, Namespace, CRDs, etc.)
+  # Namespace creation is handled by CreateNamespace=true in each Application's
+  # syncOptions — ArgoCD manages this via its own service account, not via the
+  # project whitelist. Applications themselves cannot create namespaces.
+  clusterResourceWhitelist: []
+
+  roles:
+    - name: developer
+      description: "Read-only access to dev application"
+      policies:
+        - p, proj:myapp:developer, applications, get, myapp/myapp-dev, allow
+      groups:
+        - developers
+
+    - name: pipeline
+      description: "CI pipeline — sync dev and staging"
+      policies:
+        - p, proj:myapp:pipeline, applications, sync, myapp/myapp-dev, allow
+        - p, proj:myapp:pipeline, applications, sync, myapp/myapp-staging, allow
+      groups:
+        - ci-pipeline
