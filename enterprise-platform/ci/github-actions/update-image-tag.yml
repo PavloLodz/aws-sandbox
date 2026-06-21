@@ -1,0 +1,113 @@
+# ci/github-actions/update-image-tag.yml
+#
+# Implements R7.3: patch the image.tag in the dev GitOps Application manifest
+# and commit the change after a successful Build workflow run on main.
+#
+# Stage sequence:
+#   checkout (GITOPS_PAT) → compute SHA → install yq → install Helm →
+#   helm lint → helm template validate → yq patch → git diff check →
+#   commit → push
+#
+# Only gitops/apps/dev/myapp.yaml is patched. Staging and prod promotion
+# require separate, human-gated actions — automated promotion stops at dev.
+
+name: Update GitOps Image Tag
+
+on:
+  workflow_run:
+    workflows: [ "Build" ]
+    types: [ completed ]
+    branches: [ main ]
+
+jobs:
+  update-tag:
+    name: Patch image.tag and commit to gitops
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # workflow_run fires on both success AND failure — the if: guard is
+    # mandatory. Without it a failed Build would also trigger a gitops update,
+    # potentially pointing the cluster at an image that was never pushed.
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITOPS_PAT }}
+          # A Personal Access Token with 'repo' scope is required to push to
+          # branch-protection-enabled branches. The default GITHUB_TOKEN is
+          # denied push access to protected branches (R7.9).
+
+      - name: Compute image tag from triggering run
+        id: tag
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "sha=${SHA::7}" >> "$GITHUB_OUTPUT"
+          # SHA is taken from the triggering Build run's head commit, not the
+          # current HEAD of the checkout. This ensures the gitops manifest always
+          # references the exact commit that was built, tested, and pushed.
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          # yq is YAML-aware — it edits only the targeted value and preserves
+          # all surrounding structure, comments, and indentation.
+          # sed is unsafe for YAML: a quoting or indentation change in the
+          # manifest would cause sed to silently produce malformed output.
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.17.x'
+
+      - name: Helm lint (pre-commit validation)
+        run: |
+          helm lint infrastructure/helm/myapp-chart \
+            -f infrastructure/helm/myapp-chart/values-k8s.yaml \
+            -f infrastructure/helm/myapp-chart/values-dev.yaml
+          # Catches chart syntax and values-schema errors before any file in
+          # gitops/ is touched — fail fast, keep the gitops directory clean.
+
+      - name: Helm template validate (pre-commit validation)
+        run: |
+          helm template myapp infrastructure/helm/myapp-chart \
+            -f infrastructure/helm/myapp-chart/values-k8s.yaml \
+            -f infrastructure/helm/myapp-chart/values-dev.yaml \
+            --set image.tag=${{ steps.tag.outputs.sha }} > /dev/null
+          # Fully renders templates with the new image tag. A non-zero exit
+          # indicates a template error that ArgoCD would encounter at sync time —
+          # caught here before any git write occurs.
+
+      - name: Patch image.tag in GitOps Application manifest
+        run: |
+          yq e '
+            (.spec.source.helm.parameters[] | select(.name == "image.tag")).value
+              = "${{ steps.tag.outputs.sha }}"
+          ' -i gitops/apps/dev/myapp.yaml
+          # Selects the parameter by name == "image.tag" — robust to reordering
+          # of the parameters list and to changes in surrounding indentation.
+
+      - name: Commit and push updated manifest
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gitops/apps/dev/myapp.yaml
+
+          # Idempotent — exit cleanly when the tag is already committed.
+          # Prevents empty commits on manual re-runs of this workflow.
+          git diff --staged --quiet \
+            && echo "No changes to commit — image tag already up to date" \
+            && exit 0
+
+          git commit -m \
+            "chore: update myapp-dev image tag to ${{ steps.tag.outputs.sha }} [skip ci]"
+          git push
+          # [skip ci] in the commit message prevents GitHub Actions from
+          # triggering the Build workflow on this commit, breaking the
+          # potential infinite loop: Build → Update Tag → Build → …
+
+# ── Required GitHub Secrets ──────────────────────────────────────────────────
+# GITOPS_PAT — Personal Access Token with 'repo' scope for git push to
+#              protected branches. REGISTRY_* secrets are not needed here
+#              as no image operations are performed by this workflow.

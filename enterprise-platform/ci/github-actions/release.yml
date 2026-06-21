@@ -1,0 +1,76 @@
+# ci/github-actions/release.yml
+#
+# Implements R7.2: retag the already-built, already-tested SHA image with the
+# semver version (and 'latest') when a v*.*.* tag is pushed.
+#
+# Does NOT rebuild from source — pulls the SHA image that was built and tested
+# by build.yml and adds new tags. Retag guarantees the released image is
+# bit-for-bit identical (same layer digest) to the image that passed all tests.
+# Rebuilding from source produces a different hash even for identical inputs.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  REGISTRY: ${{ secrets.REGISTRY_URL }}
+  IMAGE_NAME: myapp
+
+jobs:
+  retag:
+    name: Retag Image for Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute source SHA tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+          # All credentials sourced from GitHub Secrets — never hardcoded (R7.9).
+
+      - name: Pull, retag, and push semver + latest
+        run: |
+          SHA_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.sha }}"
+          VERSION="${GITHUB_REF_NAME}"
+          # GITHUB_REF_NAME on a tag push contains the tag name (e.g. v1.2.3) —
+          # no manual string manipulation of GITHUB_REF is needed.
+
+          # Retag not rebuild — pulling the SHA image and retagging it guarantees
+          # the semver-tagged image has the exact same layer digest as the image
+          # that passed all unit and integration tests in the Build workflow.
+          docker pull "${SHA_IMAGE}"
+          docker tag  "${SHA_IMAGE}" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          docker tag  "${SHA_IMAGE}" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # 'latest' is pushed for docker pull convenience only — it is never
+          # referenced in any Kubernetes or Helm manifest.
+
+      - name: Release summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Semver tag  | \`${GITHUB_REF_NAME}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source SHA  | \`${{ steps.tag.outputs.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Also tagged | \`latest\` |" >> $GITHUB_STEP_SUMMARY
+
+# ── Required GitHub Secrets ──────────────────────────────────────────────────
+# REGISTRY_URL      — container registry hostname (e.g. ghcr.io/org)
+# REGISTRY_USERNAME — registry login username
+# REGISTRY_PASSWORD — registry login password or access token
