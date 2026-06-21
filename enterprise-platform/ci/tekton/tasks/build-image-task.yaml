@@ -1,0 +1,67 @@
+# ci/tekton/tasks/build-image-task.yaml
+#
+# Implements R7.5: reusable Tekton Task that builds a container image using
+# Kaniko. Kaniko builds OCI images inside a container without requiring a
+# Docker daemon or a privileged container, making it safe on OpenShift SCCs
+# and Kubernetes PodSecurityAdmission restricted policies.
+#
+# Apply with:
+#   kubectl apply -f ci/tekton/tasks/build-image-task.yaml
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-image
+spec:
+  params:
+    - name: image
+      type: string
+      description: >
+        Registry and repository path for the image, without tag
+        (e.g. registry.example.com/myapp).
+    - name: tag
+      type: string
+      description: >
+        Image tag to apply — typically the 7-char commit SHA produced by the
+        clone Task (e.g. a3f9c12).
+
+  workspaces:
+    - name: source
+      description: >
+        Cloned repository root containing the application source and Dockerfile.
+
+    - name: dockerconfig
+      description: >
+        Kubernetes Secret containing a .dockerconfigjson entry with credentials
+        for the target registry. Mounted as a volume — credentials never appear
+        as environment variable strings in the Task definition (R7.9).
+        Create with:
+          kubectl create secret docker-registry regcred \
+            --docker-server=<REGISTRY> \
+            --docker-username=<USER> \
+            --docker-password=<TOKEN>
+        Then bind this workspace to that Secret in the PipelineRun.
+
+  steps:
+    - name: build
+      image: gcr.io/kaniko-project/executor:latest
+      # Kaniko is preferred over Docker-in-Docker (DinD) because it requires
+      # no 'privileged: true' on the container. DinD requires privileged mode,
+      # which is blocked by OpenShift SCCs and Kubernetes restricted
+      # PodSecurityAdmission profiles. Kaniko executes entirely in user space.
+      args:
+        - --context=$(workspaces.source.path)/application
+        - --dockerfile=$(workspaces.source.path)/application/Dockerfile
+        - --destination=$(params.image):$(params.tag)
+        - --cache=true
+          # Layer caching reuses unchanged image layers across PipelineRuns —
+          # equivalent to BuildKit GHA cache used in build.yml.
+        - --cache-ttl=24h
+          # Cached layers older than 24 h are invalidated and rebuilt from
+          # scratch, preventing stale base image layers from persisting.
+      env:
+        - name: DOCKER_CONFIG
+          value: $(workspaces.dockerconfig.path)
+          # Points the Kaniko executor at the mounted Secret directory so it
+          # can authenticate to the registry without any credential string
+          # appearing in the Task definition (R7.9).

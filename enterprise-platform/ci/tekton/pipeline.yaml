@@ -1,0 +1,130 @@
+# ci/tekton/pipeline.yaml
+#
+# Implements R7.6: Tekton Pipeline that composes all five Tasks into a
+# strictly sequenced build-test-push-deploy workflow.
+#
+# Task execution order (enforced by runAfter — R7.8):
+#   clone → test → build-image → push-image → update-gitops
+#
+# Tekton stops the entire Pipeline on any TaskRun failure. No downstream
+# Task can start until every upstream Task in the chain has succeeded.
+#
+# Apply with:
+#   kubectl apply -f ci/tekton/pipeline.yaml
+#
+# Verify:
+#   kubectl get pipeline myapp-pipeline
+#   tkn pipeline describe myapp-pipeline
+
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: myapp-pipeline
+spec:
+
+  # ── Pipeline-level parameters ──────────────────────────────────────────────
+  params:
+    - name: git-url
+      type: string
+      description: >
+        Git repository URL (HTTPS or SSH). Passed to both the clone Task
+        (source checkout) and the update-gitops Task (git push target).
+    - name: git-revision
+      type: string
+      description: Branch, tag, or full commit SHA to build.
+      default: main
+    - name: image
+      type: string
+      description: >
+        Registry and repository path without tag
+        (e.g. registry.example.com/myapp).
+    - name: image-tag
+      type: string
+      description: >
+        Image tag to build and push — typically the 7-char commit SHA
+        supplied by the TriggerBinding from the GitHub push payload.
+
+  # ── Pipeline-level workspaces ──────────────────────────────────────────────
+  workspaces:
+    - name: source
+      description: >
+        Shared workspace for the cloned repository. Bound to clone, test,
+        build-image, and update-gitops Tasks. Each PipelineRun receives a
+        fresh volumeClaimTemplate PVC to prevent cross-run contamination.
+    - name: maven-cache
+      description: >
+        Shared PVC for the Maven local repository. Bound to the test Task.
+        Long-lived — shared across all PipelineRuns to preserve ~200 MB of
+        Maven dependencies between runs.
+    - name: dockerconfig
+      description: >
+        Kubernetes Secret containing .dockerconfigjson registry credentials.
+        Bound to build-image and push-image Tasks. Credentials never appear
+        as environment variable strings (R7.9).
+    - name: git-credentials
+      description: >
+        Kubernetes Secret containing SSH key or HTTPS .netrc credentials
+        for git push. Bound to the update-gitops Task (R7.9).
+
+  # ── Tasks ──────────────────────────────────────────────────────────────────
+  tasks:
+
+    - name: clone
+      taskRef:
+        name: clone
+      params:
+        - { name: url,      value: $(params.git-url)      }
+        - { name: revision, value: $(params.git-revision) }
+      workspaces:
+        - { name: source, workspace: source }
+
+    - name: test
+      runAfter: [ clone ]
+      # test only starts after clone succeeds — ensures the source workspace
+      # is fully populated before mvn verify runs.
+      taskRef:
+        name: maven-test
+      workspaces:
+        - { name: source,      workspace: source      }
+        - { name: maven-cache, workspace: maven-cache }
+
+    - name: build-image
+      runAfter: [ test ]
+      # R7.8: build-image only runs after test exits 0. Tekton stops the
+      # Pipeline on any TaskRun failure — no image is ever built or pushed
+      # if a unit or integration test fails.
+      taskRef:
+        name: build-image
+      params:
+        - { name: image, value: $(params.image)     }
+        - { name: tag,   value: $(params.image-tag) }
+      workspaces:
+        - { name: source,       workspace: source       }
+        - { name: dockerconfig, workspace: dockerconfig }
+
+    - name: push-image
+      runAfter: [ build-image ]
+      # push-image is a separate Task to allow an optional approval gate
+      # between build and push phases. Pipelines without an approval
+      # requirement chain directly from build-image to push-image here.
+      taskRef:
+        name: push-image
+      params:
+        - { name: image, value: $(params.image)     }
+        - { name: tag,   value: $(params.image-tag) }
+      workspaces:
+        - { name: dockerconfig, workspace: dockerconfig }
+
+    - name: update-gitops
+      runAfter: [ push-image ]
+      # update-gitops only runs after the image is confirmed pushed.
+      # It patches gitops/apps/dev/myapp.yaml with the new image tag and
+      # commits, triggering an ArgoCD sync on the dev environment.
+      taskRef:
+        name: update-gitops
+      params:
+        - { name: image-tag, value: $(params.image-tag) }
+        - { name: git-url,   value: $(params.git-url)   }
+      workspaces:
+        - { name: source,          workspace: source          }
+        - { name: git-credentials, workspace: git-credentials }

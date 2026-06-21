@@ -1,0 +1,185 @@
+# ci/tekton/triggers/github-trigger.yaml
+#
+# Implements R7.7: Tekton Triggers resources that start myapp-pipeline
+# automatically on a GitHub push to main.
+#
+# This file contains four YAML documents (separated by ---):
+#   1. TriggerBinding   — extracts fields from the GitHub push webhook payload
+#   2. TriggerTemplate  — defines the PipelineRun to create on each event
+#   3. EventListener    — receives webhooks, validates HMAC, filters to main
+#   4. maven-cache-pvc  — long-lived PVC for the Maven dependency cache
+#
+# Required Kubernetes Secrets (never stored in this file — R7.9):
+#   registry-dockerconfig  — .dockerconfigjson with registry push credentials
+#                            used by build-image-task and push-image-task
+#   git-credentials        — SSH private key or HTTPS .netrc for git push
+#                            used by update-gitops-task
+#   github-webhook-secret  — HMAC token matching the GitHub webhook secret
+#                            used by the EventListener github interceptor
+#
+# Apply order:
+#   kubectl apply -f ci/tekton/triggers/github-trigger.yaml
+#
+# Verify EventListener is ready:
+#   kubectl get eventlistener github-push-listener
+#   kubectl get svc -l eventlistener=github-push-listener
+
+---
+# ── 1. TriggerBinding ────────────────────────────────────────────────────────
+# Maps fields from the GitHub push webhook JSON payload to the Pipeline params
+# that PipelineRuns need. The three params below cover source URL, full SHA
+# (for checkout), and 7-char short SHA (for the image tag).
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: github-push-binding
+spec:
+  params:
+    - name: git-url
+      value: $(body.repository.clone_url)
+      # HTTPS clone URL of the repository that received the push event.
+    - name: git-revision
+      value: $(body.after)
+      # Full 40-char SHA of the commit that was just pushed — used for
+      # the git clone --branch / checkout in the clone Task.
+    - name: image-tag
+      value: $(body.after[0:7])
+      # First 7 characters of the commit SHA — used as the image tag.
+      # Matches the GITHUB_SHA::7 truncation used in build.yml.
+
+---
+# ── 2. TriggerTemplate ───────────────────────────────────────────────────────
+# Defines the PipelineRun resource created for each matching webhook event.
+# All four params forwarded from the TriggerBinding are passed through to
+# the PipelineRun spec.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: myapp-trigger-template
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+    - name: image-tag
+
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: myapp-pipeline-run-
+        # generateName produces a unique name per run (e.g. myapp-pipeline-run-x8k2p).
+        # Prevents name collisions when two pushes arrive in quick succession.
+      spec:
+        pipelineRef:
+          name: myapp-pipeline
+
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+          - name: image
+            value: <REGISTRY>/myapp   # ← replace <REGISTRY> with your registry hostname at apply time
+          - name: image-tag
+            value: $(tt.params.image-tag)
+
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ ReadWriteOnce ]
+                resources:
+                  requests:
+                    storage: 1Gi
+            # volumeClaimTemplate creates a brand-new PVC for every PipelineRun.
+            # Each run gets a clean workspace with no leftover files from previous
+            # runs — prevents cross-run source contamination in concurrent builds.
+
+          - name: maven-cache
+            persistentVolumeClaim:
+              claimName: maven-cache-pvc
+            # Long-lived PVC shared across all PipelineRuns. Maven resolves
+            # dependencies once and reuses the cache on every subsequent run,
+            # avoiding re-downloading ~200 MB of artefacts each time.
+
+          - name: dockerconfig
+            secret:
+              secretName: registry-dockerconfig
+            # Kubernetes Secret with .dockerconfigjson for registry push auth.
+            # Secret value never appears in this file (R7.9).
+
+          - name: git-credentials
+            secret:
+              secretName: git-credentials
+            # Kubernetes Secret with SSH key or HTTPS .netrc for git push.
+            # Secret value never appears in this file (R7.9).
+
+---
+# ── 3. EventListener ─────────────────────────────────────────────────────────
+# Receives incoming GitHub webhook POST requests, validates the HMAC signature,
+# filters to main-branch pushes only, and creates a PipelineRun via the
+# TriggerTemplate for each valid event.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: github-push-listener
+spec:
+  serviceAccountName: tekton-trigger-sa
+  # tekton-trigger-sa must have RBAC permissions to create PipelineRuns,
+  # TriggerBindings, and TriggerTemplates in this namespace.
+
+  triggers:
+    - name: push-to-main
+      interceptors:
+        - ref:
+            name: github
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value: [ push ]
+          # The github interceptor validates the HMAC-SHA256 signature on every
+          # incoming webhook request using the token from github-webhook-secret.
+          # Any payload with a missing or invalid signature is rejected with
+          # HTTP 400 before a PipelineRun is ever created. This prevents
+          # unauthenticated actors from triggering pipeline runs.
+
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/main'"
+          # The CEL interceptor filters to pushes targeting the main branch only.
+          # Pushes to feature branches, tag pushes (refs/tags/*), and deletions
+          # all produce body.ref values that do not match this expression and are
+          # silently dropped — no PipelineRun is created for them.
+
+      bindings:
+        - ref: github-push-binding
+
+      template:
+        ref: myapp-trigger-template
+
+---
+# ── 4. maven-cache-pvc ───────────────────────────────────────────────────────
+# Long-lived PersistentVolumeClaim for the Maven local repository (~/.m2).
+# Must be created before the first PipelineRun. Shared across all PipelineRuns
+# so Maven dependencies are downloaded once and reused on every subsequent run.
+#
+# Apply separately before the first run if not already present:
+#   kubectl apply -f ci/tekton/triggers/github-trigger.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maven-cache-pvc
+  # Shared across all PipelineRuns — do not delete between runs or the full
+  # Maven dependency tree (~200 MB) will be re-downloaded on the next run.
+spec:
+  accessModes: [ ReadWriteOnce ]
+  resources:
+    requests:
+      storage: 5Gi
+      # 5 Gi accommodates the full Maven local repository for a Spring Boot
+      # project with Testcontainers dependencies and room for growth.

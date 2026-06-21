@@ -1,0 +1,55 @@
+# ci/tekton/tasks/test-task.yaml
+#
+# Implements R7.5: reusable Tekton Task that runs 'mvn verify' against the
+# cloned source tree. Uses a shared Maven cache PVC and the host Docker socket
+# for Testcontainers integration tests.
+#
+# Apply with:
+#   kubectl apply -f ci/tekton/tasks/test-task.yaml
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-test
+spec:
+  workspaces:
+    - name: source
+      description: >
+        Cloned repository root — must be bound to the same PVC or workspace
+        as the clone Task output.
+
+    - name: maven-cache
+      description: >
+        Shared PVC for the Maven local repository (~/.m2/repository).
+        Backed by a ReadWriteMany PVC shared across all PipelineRuns so that
+        Maven dependencies (~200 MB) are downloaded once and reused on every
+        subsequent run. Without this workspace each PipelineRun would
+        re-download the full dependency tree.
+
+  steps:
+    - name: verify
+      image: maven:3.9-eclipse-temurin-21
+      workingDir: $(workspaces.source.path)/application
+      script: |
+        mvn verify --batch-mode \
+          -Dmaven.repo.local=$(workspaces.maven-cache.path)
+        # mvn verify: compile → test (surefire) → package → verify (failsafe).
+        # -Dmaven.repo.local writes resolved artefacts into the maven-cache
+        # workspace so they persist across PipelineRuns.
+        # R7.8: build-image-task is a separate, downstream Task — it cannot
+        # run until this Task exits successfully (enforced by the Pipeline DAG).
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+          # Testcontainers starts real Docker containers during integration
+          # tests. The host socket mount gives the Maven container access to
+          # the node's Docker daemon — same pattern as the Jenkins agent.
+
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+        type: Socket
+        # hostPath Socket mounts the Docker daemon socket from the Kubernetes
+        # node into the Task pod. Required for Testcontainers integration tests
+        # and follows the same pattern as the Jenkins Docker agent socket mount.

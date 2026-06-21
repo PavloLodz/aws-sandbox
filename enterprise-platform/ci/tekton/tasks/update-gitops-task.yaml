@@ -1,0 +1,92 @@
+# ci/tekton/tasks/update-gitops-task.yaml
+#
+# Implements R7.5: reusable Tekton Task that patches the image.tag value in
+# the dev GitOps Application manifest, commits the change, and pushes to
+# trigger an ArgoCD sync. Only gitops/apps/dev/myapp.yaml is patched —
+# staging and prod promotion require separate, human-gated actions.
+#
+# Apply with:
+#   kubectl apply -f ci/tekton/tasks/update-gitops-task.yaml
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: update-gitops
+spec:
+  params:
+    - name: image-tag
+      type: string
+      description: >
+        The 7-char commit SHA to write as the new image.tag value
+        (e.g. a3f9c12). Must match the tag pushed by build-image-task.
+    - name: git-url
+      type: string
+      description: >
+        HTTPS or SSH URL of the repository to push the gitops commit to.
+        Must match the repository ArgoCD is watching.
+
+  workspaces:
+    - name: source
+      description: >
+        Cloned repository root — must contain the gitops/apps/dev/myapp.yaml
+        file. Bind to the same workspace as the clone Task output.
+
+    - name: git-credentials
+      description: >
+        Kubernetes Secret containing SSH private key or HTTPS .netrc credentials
+        for git push. Mounted as a volume — credentials never appear as
+        environment variable strings in the Task definition (R7.9).
+        SSH example:
+          kubectl create secret generic git-ssh \
+            --from-file=ssh-privatekey=~/.ssh/id_rsa
+        HTTPS example:
+          kubectl create secret generic git-netrc \
+            --from-literal=.netrc="machine github.com login <user> password <token>"
+
+  steps:
+    - name: install-yq
+      image: alpine:3.19
+      script: |
+        apk add --no-cache wget
+        wget -qO /usr/local/bin/yq \
+          https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        chmod +x /usr/local/bin/yq
+        # yq is YAML-aware — it edits only the targeted scalar value and
+        # preserves all surrounding structure, comments, and indentation.
+        # sed is unsafe for YAML: indentation or quoting changes between
+        # chart versions cause sed to silently produce malformed output.
+        # Same rationale as the yq install in update-image-tag.yml.
+
+    - name: patch-and-commit
+      image: alpine/git:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        # Mount git credentials from workspace so git push can authenticate.
+        # The git-credentials workspace path contains either an SSH key or
+        # a .netrc file — no credential string appears in this script (R7.9).
+        export GIT_SSH_COMMAND="ssh -i $(workspaces.git-credentials.path)/ssh-privatekey \
+          -o StrictHostKeyChecking=no"
+
+        yq e '
+          (.spec.source.helm.parameters[] | select(.name == "image.tag")).value
+            = "$(params.image-tag)"
+        ' -i gitops/apps/dev/myapp.yaml
+        # yq selects the parameter by name == "image.tag" — robust to list
+        # reordering and surrounding indentation changes in the manifest.
+
+        git config user.name  "tekton-bot"
+        git config user.email "tekton-bot@ci.local"
+        git add gitops/apps/dev/myapp.yaml
+
+        # Idempotent — exit cleanly when the tag is already committed.
+        # Prevents empty commits on Task re-runs or retried PipelineRuns.
+        git diff --staged --quiet \
+          && echo "Tag already committed — nothing to push" \
+          && exit 0
+
+        git commit -m \
+          "chore: update myapp-dev image tag to $(params.image-tag) [skip ci]"
+        git push $(params.git-url)
+        # [skip ci] in the commit message prevents the CI pipeline from
+        # re-triggering on this gitops commit, breaking the potential
+        # infinite loop: build → update-gitops → build → …

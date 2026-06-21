@@ -1,0 +1,124 @@
+// ci/jenkins/Jenkinsfile.build
+//
+// Implements R7.4: Jenkins declarative pipeline — test, build, push.
+// Logical stages are equivalent to ci/github-actions/build.yml.
+//
+// Required Jenkins plugins:
+//   - Pipeline              (workflow-aggregator)  — declarative pipeline syntax
+//   - Docker Pipeline       (docker-workflow)      — docker.build / docker.withRegistry
+//   - Credentials Binding   (credentials-binding)  — withCredentials block
+//   - JUnit                 (junit)                — test result archiving
+//
+// Required Jenkins Credentials (Manage Jenkins → Credentials → System →
+// Global credentials — never stored in this file):
+//   - REGISTRY_URL   : Secret text       — container registry hostname
+//   - REGISTRY_CREDS : Username/password — registry login (username + password/token)
+//
+// Creating the Jenkins job:
+//   New Item → Pipeline → Pipeline script from SCM →
+//   Git → Repository URL: <repo> → Branch: main →
+//   Script Path: ci/jenkins/Jenkinsfile.build
+
+pipeline {
+
+  agent {
+    docker {
+      image 'maven:3.9-eclipse-temurin-21'
+      args  '-v /var/run/docker.sock:/var/run/docker.sock'
+      // Docker socket mount required for Testcontainers integration tests.
+      // The Maven+JDK image provides the correct Java version without any
+      // additional setup step on the Jenkins agent itself.
+    }
+  }
+
+  environment {
+    IMAGE_TAG = "${GIT_COMMIT[0..6]}"
+    // 7-char short SHA — unique per commit, traceable to source, and safe
+    // for use in Kubernetes labels (63-char limit, alphanumeric + hyphen).
+  }
+
+  options {
+    timeout(time: 30, unit: 'MINUTES')
+    // Kills hung builds — Testcontainers cleanup failures can otherwise leave
+    // a build blocked indefinitely waiting for a container to stop.
+    disableConcurrentBuilds()
+    // Prevents resource contention between concurrent Testcontainers-using
+    // builds on the same agent — two builds sharing the Docker socket and
+    // the same network ports would produce non-deterministic failures.
+  }
+
+  stages {
+
+    stage('Test') {
+      steps {
+        dir('application') {
+          sh 'mvn verify --batch-mode -Dmaven.repo.local=.m2'
+          // mvn verify: compile → test (surefire) → package → verify (failsafe).
+          // -Dmaven.repo.local=.m2 keeps the Maven cache inside the workspace
+          // directory. Without it the Docker agent writes to a root-owned path
+          // (/root/.m2) which is not preserved between runs by Jenkins workspace
+          // caching, forcing a full dependency re-download every build.
+        }
+      }
+      post {
+        always {
+          junit 'application/target/surefire-reports/*.xml'
+          // Archives unit test results — visible in the Jenkins test trend graph
+          // and build page regardless of whether the build passed or failed.
+          junit allowEmptyResults: true,
+                testResults: 'application/target/failsafe-reports/*.xml'
+          // allowEmptyResults: true — failsafe reports are absent when no
+          // integration tests have run (e.g. compile-only branches). Without
+          // this flag the junit step would fail the build on a missing glob.
+          // Both junit steps together give a unified pass/fail trend graph.
+        }
+      }
+    }
+
+    stage('Build Image') {
+      // R7.8: this stage is only reached when the Test stage exits 0.
+      // Declarative pipeline halts the run on stage failure by default —
+      // no explicit `when` condition or `&&` guard is needed here.
+      steps {
+        script {
+          withCredentials([string(credentialsId: 'REGISTRY_URL', variable: 'REGISTRY')]) {
+            env.FULL_IMAGE = "${REGISTRY}/myapp:${IMAGE_TAG}"
+          }
+          docker.build(env.FULL_IMAGE, '-f application/Dockerfile application')
+        }
+      }
+    }
+
+    stage('Push Image') {
+      when {
+        branch 'main'
+        // Only push from main — mirrors build.yml's PR-no-push behaviour.
+        // Builds on feature branches validate the Dockerfile without pushing
+        // unreviewed images to the shared registry.
+      }
+      steps {
+        script {
+          withCredentials([string(credentialsId: 'REGISTRY_URL', variable: 'REGISTRY')]) {
+            docker.withRegistry("https://${REGISTRY}", 'REGISTRY_CREDS') {
+              docker.image(env.FULL_IMAGE).push()
+            }
+            // All credentials via withCredentials / docker.withRegistry (R7.9).
+            // REGISTRY_URL is a Secret text credential; REGISTRY_CREDS is a
+            // Username/password credential — neither value is visible in logs
+            // or stored in this file.
+          }
+        }
+      }
+    }
+
+  } // end stages
+
+  post {
+    success { echo "Image pushed: ${env.FULL_IMAGE}" }
+    failure { echo "Build failed — no image was pushed." }
+    always  { cleanWs() }
+    // cleanWs() removes the workspace after every run — prevents stale
+    // build artefacts and the .m2 cache from accumulating on the agent disk.
+  }
+
+}
