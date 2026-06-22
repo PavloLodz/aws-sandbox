@@ -61,6 +61,13 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
+    <!-- Micrometer Prometheus registry — exposes /actuator/prometheus scrape endpoint (R8.1) -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+      <!-- version managed by spring-boot-starter-parent BOM -->
+    </dependency>
+
     <!-- PostgreSQL Driver -->
     <dependency>
       <groupId>org.postgresql</groupId>
