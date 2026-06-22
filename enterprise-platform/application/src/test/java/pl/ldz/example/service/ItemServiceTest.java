@@ -1,12 +1,14 @@
 package pl.ldz.example.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import pl.ldz.example.dto.ItemRequest;
@@ -18,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -32,13 +35,19 @@ class ItemServiceTest {
   @Mock
   private ItemRepository itemRepository;
 
-  @InjectMocks
-  private ItemService itemService;
+  // Replaced @InjectMocks — ItemService now requires MeterRegistry in its
+  // constructor; SimpleMeterRegistry is injected explicitly below.
+  private SimpleMeterRegistry meterRegistry;
+  private ItemService         itemService;
 
   private Item sampleItem;
 
   @BeforeEach
   void setUp() {
+    meterRegistry = new SimpleMeterRegistry();
+    itemService   = new ItemService(itemRepository, meterRegistry);
+    itemService.initMetrics(); // trigger @PostConstruct manually — Spring lifecycle is not active in unit tests
+
     sampleItem = Item.builder()
         .id(1L)
         .name("Widget A")
@@ -269,6 +278,71 @@ class ItemServiceTest {
           .hasMessageContaining("99");
 
       verify(itemRepository, never()).deleteById(any());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Metrics
+  // ---------------------------------------------------------------------------
+  @Nested
+  @DisplayName("Metrics")
+  class Metrics {
+
+    @Test
+    @DisplayName("create() increments items.created.total counter")
+    void createIncrementsCounter() {
+      ItemRequest request = new ItemRequest("Metric Item", null);
+      Item saved = Item.builder().id(7L).name("Metric Item").description(null)
+          .createdAt(Instant.now()).updatedAt(Instant.now()).build();
+      when(itemRepository.save(any(Item.class))).thenReturn(saved);
+
+      itemService.create(request);
+      itemService.create(request);
+
+      Counter counter = meterRegistry.find("items.created.total").counter();
+      assertThat(counter).isNotNull();
+      assertThat(counter.count()).isEqualTo(2.0);
+    }
+
+    @Test
+    @DisplayName("delete() increments items.deleted.total counter")
+    void deleteIncrementsCounter() {
+      when(itemRepository.existsById(1L)).thenReturn(true);
+
+      itemService.delete(1L);
+
+      Counter counter = meterRegistry.find("items.deleted.total").counter();
+      assertThat(counter).isNotNull();
+      assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("delete() does not increment counter when item not found")
+    void deleteDoesNotIncrementCounterOnMiss() {
+      when(itemRepository.existsById(99L)).thenReturn(false);
+
+      assertThatThrownBy(() -> itemService.delete(99L))
+          .isInstanceOf(NoSuchElementException.class);
+
+      Counter counter = meterRegistry.find("items.deleted.total").counter();
+      // Null-tolerant: SimpleMeterRegistry does not pre-register meters before
+      // the first observation, so the counter may be null if increment() was
+      // never called (i.e. the exception path was taken as expected).
+      assertThat(counter == null || counter.count() == 0.0).isTrue();
+    }
+
+    @Test
+    @DisplayName("findAll() records a timing observation in items.fetch.duration")
+    void findAllRecordsTimer() {
+      when(itemRepository.findAll()).thenReturn(List.of(sampleItem));
+
+      itemService.findAll();
+      itemService.findAll();
+
+      Timer timer = meterRegistry.find("items.fetch.duration").timer();
+      assertThat(timer).isNotNull();
+      assertThat(timer.count()).isEqualTo(2L);
+      assertThat(timer.totalTime(TimeUnit.NANOSECONDS)).isGreaterThan(0);
     }
   }
 }
