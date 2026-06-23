@@ -1,0 +1,45 @@
+# monitoring/prometheus/rules/pod-not-ready.yaml
+#
+# Implements R8.9: PrometheusRule that fires when any pod in the myapp
+# namespace has been in a non-Ready state for more than 2 minutes.
+#
+# Apply with:
+#   kubectl apply -f monitoring/prometheus/rules/pod-not-ready.yaml
+#
+# Verify the rule is loaded:
+#   kubectl get prometheusrule pod-not-ready -n monitoring
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pod-not-ready
+  namespace: monitoring
+  labels:
+    release: prometheus
+    # 'release: prometheus' is required by kube-prometheus-stack's default
+    # ruleSelector. Without this label the Prometheus Operator silently ignores
+    # this PrometheusRule.
+spec:
+  groups:
+    - name: myapp.availability
+      rules:
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{
+              namespace="myapp",
+              condition="true"
+            } == 0
+          # namespace="myapp" scopes the alert to the application namespace —
+          # avoids false alerts from unrelated pods in monitoring, kube-system,
+          # or other namespaces on the same cluster.
+          for: 2m
+          # 'for: 2m' — shorter than the error rate alert because pod
+          # unavailability is an immediate user-facing problem. A pod that is
+          # not Ready for 2+ minutes has most likely crashed, not restarted.
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} not ready"
+            description: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a
+              non-Ready state for more than 2 minutes.

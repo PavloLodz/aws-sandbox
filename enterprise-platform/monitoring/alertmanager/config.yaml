@@ -1,0 +1,98 @@
+# monitoring/alertmanager/config.yaml
+#
+# Implements R8.11: Alertmanager configuration — routes firing alerts to a
+# Slack channel grouped by alertname and severity.
+#
+# LEARNING / DEV SETUP: the Slack webhook URL in this file is a dummy value.
+# The file is safe to commit to Git. To enable real Slack notifications:
+#
+#   Step 1 — Create a Slack app with Incoming Webhooks:
+#             https://api.slack.com/apps → New App → Incoming Webhooks → Activate
+#   Step 2 — Add a webhook to the target channel and copy the URL:
+#             https://hooks.slack.com/services/T.../B.../...
+#   Step 3 — Store the real URL as a Kubernetes Secret (never commit it):
+#               kubectl create secret generic alertmanager-slack \
+#                 --from-literal=webhook-url='https://hooks.slack.com/services/...' \
+#                 --namespace monitoring
+#   Step 4 — Reference the Secret in the kube-prometheus-stack Helm values:
+#               alertmanager:
+#                 alertmanagerSpec:
+#                   configSecret: alertmanager-slack
+#   Step 5 — Reload Alertmanager after applying the secret:
+#               kubectl rollout restart statefulset alertmanager-kube-prometheus-stack-alertmanager \
+#                 -n monitoring
+#
+# Apply as a Kubernetes Secret (for use by Alertmanager directly):
+#   kubectl create secret generic alertmanager-main \
+#     --from-file=alertmanager.yaml=monitoring/alertmanager/config.yaml \
+#     --namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+global:
+  resolve_timeout: 5m
+  # resolve_timeout: time after which an alert that is no longer firing is
+  # declared resolved. 5m is the default and matches the scrape interval cadence.
+
+route:
+  group_by: [ alertname, severity ]
+  # group_by: alerts with the same alertname + severity are batched into a
+  # single notification — prevents N separate Slack messages for N pods all
+  # triggering the same alert at the same time.
+  group_wait: 30s
+  # group_wait: buffer window after the first alert in a group fires before
+  # sending the initial notification. Allows related alerts to arrive and be
+  # grouped together rather than triggering individual messages.
+  group_interval: 5m
+  # group_interval: minimum time between notifications for an existing group
+  # when new alerts join it. Prevents rapid repeated messages as alert members
+  # are added one by one.
+  repeat_interval: 12h
+  # repeat_interval: default re-notification interval for ongoing (non-resolved)
+  # alerts. Overridden per severity in the child routes below.
+  receiver: slack-notifications
+
+  routes:
+    - matchers:
+        - severity = critical
+      receiver: slack-notifications
+      repeat_interval: 1h
+      # Critical alerts re-notify every hour — the issue is user-facing
+      # (e.g. pod not ready) and needs frequent attention until resolved.
+
+    - matchers:
+        - severity = warning
+      receiver: slack-notifications
+      repeat_interval: 6h
+      # Warning alerts re-notify every 6 hours — less urgent than critical
+      # (e.g. memory trending up) but still requires eventual action.
+
+receivers:
+  - name: slack-notifications
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/DUMMY/DUMMY/DUMMYDUMMYDUMMY'
+        # ↑ DUMMY URL — replace with a real Slack webhook URL stored in a
+        #   Kubernetes Secret (see setup instructions in the header comment).
+        channel: '#alerts-dev'
+        send_resolved: true
+        # send_resolved: true — sends a ✅ notification when an alert clears,
+        # so on-call engineers know the issue has been automatically resolved.
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }} :fire:{{ else }} :white_check_mark:{{ end }}] {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Severity:* {{ .Labels.severity }}
+            *Description:* {{ .Annotations.description }}
+            *Started:* {{ .StartsAt | since }}
+          {{ end }}
+
+inhibit_rules:
+  - source_matchers:
+      - severity = critical
+    target_matchers:
+      - severity = warning
+    equal: [ alertname ]
+    # inhibit_rules: when a critical alert fires, suppress all warning alerts
+    # with the same alertname. This prevents alert storm duplication where the
+    # same root cause triggers both severity levels simultaneously.
+    # Example: a pod crash causes PodNotReady (critical) AND drives up the
+    # HighErrorRate (warning) — without inhibition both fire independently;
+    # with inhibition only PodNotReady/critical is notified.

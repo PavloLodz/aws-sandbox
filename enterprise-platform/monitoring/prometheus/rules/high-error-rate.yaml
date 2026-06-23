@@ -1,0 +1,51 @@
+# monitoring/prometheus/rules/high-error-rate.yaml
+#
+# Implements R8.8: PrometheusRule that fires when the HTTP 5xx error rate
+# exceeds 1% of total requests over a 5-minute window.
+#
+# Apply with:
+#   kubectl apply -f monitoring/prometheus/rules/high-error-rate.yaml
+#
+# Verify the rule is loaded:
+#   kubectl get prometheusrule high-error-rate -n monitoring
+#   # Then check Prometheus UI → Status → Rules for HighErrorRate
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: high-error-rate
+  namespace: monitoring
+  labels:
+    release: prometheus
+    # 'release: prometheus' is required by kube-prometheus-stack's default
+    # ruleSelector. Without this label the Prometheus Operator silently ignores
+    # this PrometheusRule and no alert is ever registered.
+spec:
+  groups:
+    - name: myapp.errors
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{
+                job="myapp", status=~"5.."}[5m]))
+              /
+              sum(rate(http_server_requests_seconds_count{
+                job="myapp"}[5m]))
+            ) > 0.01
+          # http_server_requests_seconds_count is the Spring Boot Actuator /
+          # Micrometer metric name for HTTP request counts. status=~"5.."
+          # matches all 5xx codes (500, 502, 503, 504 …) — not a fixed
+          # status="500" which would miss other 5xx response codes.
+          for: 5m
+          # 'for: 5m' — alert fires only after the condition is true for
+          # 5 continuous minutes. Avoids noise from transient error spikes
+          # that self-resolve within the scrape interval.
+          labels:
+            severity: warning
+          annotations:
+            summary: "High HTTP 5xx error rate on {{ $labels.job }}"
+            description: >
+              More than 1% of requests to {{ $labels.job }} are returning
+              5xx errors over the last 5 minutes
+              (current value: {{ $value | humanizePercentage }}).

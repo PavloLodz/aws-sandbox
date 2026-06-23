@@ -1,0 +1,56 @@
+# monitoring/prometheus/rules/high-memory-usage.yaml
+#
+# Implements R8.10: PrometheusRule that fires when JVM heap utilisation
+# exceeds 80% of the configured max heap for 5 continuous minutes.
+#
+# Apply with:
+#   kubectl apply -f monitoring/prometheus/rules/high-memory-usage.yaml
+#
+# Verify the rule is loaded:
+#   kubectl get prometheusrule high-memory-usage -n monitoring
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: high-memory-usage
+  namespace: monitoring
+  labels:
+    release: prometheus
+    # 'release: prometheus' is required by kube-prometheus-stack's default
+    # ruleSelector. Without this label the Prometheus Operator silently ignores
+    # this PrometheusRule.
+spec:
+  groups:
+    - name: myapp.jvm
+      rules:
+        - alert: HighJvmHeapUsage
+          expr: |
+            (
+              jvm_memory_used_bytes{
+                job="myapp",
+                area="heap"
+              }
+              /
+              jvm_memory_max_bytes{
+                job="myapp",
+                area="heap"
+              }
+            ) > 0.80
+          # jvm_memory_used_bytes and jvm_memory_max_bytes come from the
+          # standard Micrometer jvm.memory.used / jvm.memory.max meters,
+          # both exposed automatically by micrometer-registry-prometheus.
+          # A ratio is used rather than an absolute byte threshold so the
+          # alert remains correct across different container memory limits —
+          # an absolute threshold would need updating every time the JVM
+          # -Xmx value or container memory limit changes.
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "JVM heap > 80% on {{ $labels.job }}"
+            description: >
+              JVM heap utilisation for {{ $labels.job }} has exceeded 80%
+              for more than 5 minutes
+              (current value: {{ $value | humanizePercentage }}).
+              Consider increasing the container memory limit or tuning GC
+              settings (e.g. -XX:MaxRAMPercentage or -Xmx).
